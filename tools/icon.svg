@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="35%" r="75%"><stop offset="0" stop-color="#4b6328"/><stop offset="1" stop-color="#1d2414"/></radialGradient>
+    <linearGradient id="hl" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#6f8a3c"/><stop offset="1" stop-color="#3f5220"/></linearGradient>
+  </defs>
+  <rect width="512" height="512" rx="96" fill="url(#bg)"/>
+  <rect y="410" width="512" height="34" fill="#c8102e"/><rect y="444" width="512" height="34" fill="#fff"/><rect y="478" width="512" height="34" fill="#c8102e"/>
+  <!-- Hörner -->
+  <path d="M150 210 Q70 190 60 120 Q110 170 175 170 Z" fill="#efe6cf" stroke="#2a2420" stroke-width="6"/>
+  <path d="M362 210 Q442 190 452 120 Q402 170 337 170 Z" fill="#efe6cf" stroke="#2a2420" stroke-width="6"/>
+  <!-- Ohren -->
+  <ellipse cx="128" cy="245" rx="52" ry="24" transform="rotate(-18 128 245)" fill="#f3ece0" stroke="#2a2420" stroke-width="6"/>
+  <ellipse cx="384" cy="245" rx="52" ry="24" transform="rotate(18 384 245)" fill="#f3ece0" stroke="#2a2420" stroke-width="6"/>
+  <!-- Kopf -->
+  <ellipse cx="256" cy="262" rx="118" ry="122" fill="#f3ece0" stroke="#2a2420" stroke-width="8"/>
+  <path d="M170 200 Q200 170 240 205 Q215 250 175 240 Z" fill="#94461f"/>
+  <path d="M318 290 Q360 270 368 320 Q340 340 316 318 Z" fill="#94461f"/>
+  <!-- Helm -->
+  <path d="M136 210 Q140 110 256 104 Q372 110 376 210 Z" fill="url(#hl)" stroke="#1d2414" stroke-width="8"/>
+  <rect x="122" y="200" width="268" height="22" rx="11" fill="#2f3d18" stroke="#1d2414" stroke-width="6"/>
+  <rect x="226" y="150" width="60" height="9" rx="4" fill="#f2c14e"/><rect x="226" y="166" width="60" height="9" rx="4" fill="#f2c14e"/>
+  <!-- Augen -->
+  <circle cx="212" cy="258" r="24" fill="#fff" stroke="#2a2420" stroke-width="5"/><circle cx="300" cy="258" r="24" fill="#fff" stroke="#2a2420" stroke-width="5"/>
+  <circle cx="218" cy="262" r="12" fill="#111"/><circle cx="294" cy="262" r="12" fill="#111"/>
+  <path d="M184 232 L232 242" stroke="#111" stroke-width="9" stroke-linecap="round"/><path d="M328 232 L280 242" stroke="#111" stroke-width="9" stroke-linecap="round"/>
+  <!-- Schnauze -->
+  <ellipse cx="256" cy="336" rx="82" ry="52" fill="#f1b9a8" stroke="#2a2420" stroke-width="7"/>
+  <ellipse cx="226" cy="334" rx="11" ry="15" fill="#3a1f1a"/><ellipse cx="286" cy="334" rx="11" ry="15" fill="#3a1f1a"/>
+  <path d="M232 365 Q256 378 280 365" stroke="#3a1f1a" stroke-width="6" fill="none" stroke-linecap="round"/>
+  <!-- Glocke -->
+  <path d="M236 386 L276 386 L286 410 L226 410 Z" fill="#e6b422" stroke="#7a5800" stroke-width="5"/>
+</svg>
