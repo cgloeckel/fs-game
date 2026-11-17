@@ -30,6 +30,7 @@ export class HUD {
         </div>
       </div>
       <div class="labels"></div>
+      <div class="xhair"><i></i><span></span></div>
       <div class="unitcard">
         <div class="uc-name"></div>
         <div class="uc-title"></div>
@@ -48,7 +49,7 @@ export class HUD {
         <button class="abtn big" data-cmd="aim">🎯<span>Zielen</span></button>
         <button class="abtn big fire" data-cmd="fire">🔥<span>Feuer</span></button>
       </div>
-      <div class="power"><i></i></div>
+      <div class="power"><i></i><b class="tick"></b></div>
       <div class="aiminfo"></div>
       <div class="announce"><div class="a-title"></div><div class="a-sub"></div></div>
       <div class="toast"></div>
@@ -173,7 +174,7 @@ export class HUD {
     show('overview', mv || aim);
     const fireBtn = r.querySelector('[data-cmd="fire"] span');
     if (fireBtn && W) {
-      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.type === 'jump' ? 'Spring!' : W.type === 'ballistic' ? 'Halten' : 'Feuer';
+      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.type === 'jump' ? 'Spring!' : W.type === 'ballistic' ? 'Tipp/Halten' : 'Feuer';
     }
     r.querySelector('.joy').classList.toggle('off', !(mv || aim || ret) || game.overview);
     this.updateWeaponButton(game);
@@ -200,7 +201,7 @@ export class HUD {
     if (human && ph === 'move') t = '<b>W/S</b> gehen · <b>A/D</b> drehen · <b>Leertaste</b> hupfen · <b>F</b> zielen · <b>Q</b> Waffen · <b>Tab</b> wechseln · <b>M</b> Karte · <b>X</b> Zug beenden · Maus ziehen = Kamera';
     else if (human && ph === 'aim') {
       const W = WEAPONS[game.weapon];
-      t = `<b>A/D</b> drehen · <b>W/S</b> Winkel · ${W.type === 'ballistic' ? '<b>Leertaste halten</b> = Kraft, loslassen = Wurf' : '<b>Leertaste</b> Feuer'} · <b>E</b> nächstes Ziel · <b>Shift</b> fein · <b>Esc</b> zurück · Maus ziehen = zielen`;
+      t = `<b>A/D</b> drehen · <b>W/S</b> Winkel · ${W.type === 'ballistic' ? '<b>Enter</b> Feuer (Kreis = Einschlag) · <b>Leertaste halten</b> = Kraft selbst laden' : '<b>Leertaste</b> Feuer'} · <b>E</b> nächstes Ziel · <b>Shift</b> fein · <b>Esc</b> zurück · Maus ziehen = zielen`;
     } else if (human && ph === 'target') t = '<b>Klick</b> aufs Ziel · nochmal klicken oder <b>Leertaste</b> = Feuer · Maus ziehen = Karte schieben · <b>Esc</b> zurück';
     else if (human && ph === 'retreat') t = '<b>W/A/S/D</b> davonlaufen! · <b>Leertaste</b> hupfen';
     kh.innerHTML = t;
@@ -376,10 +377,41 @@ export class HUD {
     }
     // Kraftbalken
     const pw = this.$('.power');
-    if (game.charging) {
+    const Wc = game.weapon ? WEAPONS[game.weapon] : null;
+    const humanBall = game.phase === 'aim' && game.team && game.team.human && Wc && Wc.type === 'ballistic';
+    if (game.charging || humanBall) {
       pw.classList.add('show');
-      pw.querySelector('i').style.width = `${game.power * 100}%`;
+      pw.querySelector('i').style.width = `${(game.charging ? game.power : 0) * 100}%`;
+      const tick = pw.querySelector('.tick');
+      if (game.powerHint) {
+        tick.style.display = 'block';
+        tick.style.left = `${game.powerHint.power * 100}%`;
+        pw.classList.toggle('near', game.charging && Math.abs(game.power - game.powerHint.power) < 0.03);
+      } else {
+        tick.style.display = 'none';
+        pw.classList.remove('near');
+      }
     } else pw.classList.remove('show');
+    // Fadenkreuz am tatsächlichen Treffer-/Einschlagspunkt
+    const xh = this.$('.xhair');
+    const ai0 = game.aimInfo;
+    const xp = ai0 ? this.project(ai0.point, cam, w, h) : null;
+    if (xp) {
+      xh.classList.add('show');
+      xh.style.transform = `translate(${xp.x.toFixed(1)}px, ${xp.y.toFixed(1)}px)`;
+      xh.classList.toggle('on', !!ai0.enemy);
+      xh.classList.toggle('friend', !ai0.enemy && !!ai0.friend);
+      let t = '';
+      if (ai0.enemy) t = ai0.melee ? `${ai0.enemy.s.name} in Reichweite!` : ai0.head ? `Kopf! ${ai0.enemy.s.name}` : `Treffer: ${ai0.enemy.s.name}`;
+      else if (ai0.friend) t = `Achtung, ${ai0.friend.s.name}!`;
+      else if (ai0.water) t = 'Ins Wasser';
+      else if (ai0.melee) t = 'Ka Gegner in Reichweite';
+      else if (ai0.range) t = 'Außer Reichweite';
+      else if (ai0.blocked) t = 'Deckung im Weg';
+      if (ai0.dist !== undefined && !ai0.melee) t += `${t ? ' · ' : ''}${Math.round(ai0.dist)} m`;
+      const sp = xh.querySelector('span');
+      if (sp.textContent !== t) sp.textContent = t;
+    } else xh.classList.remove('show');
     // Zielinfo
     const ai = this.$('.aiminfo');
     if (u && u.aiming && (game.phase === 'aim' || game.phase === 'ai')) {
@@ -412,13 +444,14 @@ export class HUD {
         <li><b>Joystick links:</b> vorwärts/rückwärts gehen und drehen.</li>
         <li><b>Wischen am Bildschirm:</b> Kamera drehen. Zwei Finger: zoomen.</li>
         <li><b>🎯 Zielen:</b> Waffe anlegen. Dann wischen oder Joystick = Richtung &amp; Winkel.</li>
-        <li><b>🔥 halten:</b> Bei Granaten &amp; Co. Kraft aufladen, loslassen = Wurf.</li>
-        <li><b>⌖ Ziel:</b> springt zum nächsten Gegner.</li>` : `
+        <li><b>⌖ Ziel:</b> dreht zum nächsten Gegner und stellt bei Granaten &amp; Co. gleich die passende Kraft ein.</li>
+        <li><b>🔥 antippen</b> feuert mit der eingestellten Kraft (der Kreis zeigt den Einschlag). <b>🔥 halten</b> lädt die Kraft selbst auf – loslassen = Wurf.</li>` : `
         <li><b>W/S</b> gehen, <b>A/D</b> drehen, <b>Leertaste</b> hupfen, Maus ziehen = Kamera.</li>
         <li><b>F</b> zielen, <b>Q</b> Waffenkammer, <b>1–9</b> Schnellwahl.</li>
         <li>Beim Zielen: <b>A/D</b> drehen, <b>W/S</b> Winkel – oder einfach mit der Maus ziehen.</li>
-        <li><b>Leertaste halten</b> lädt die Kraft (Granaten, Panzerfaust), loslassen = Feuer.</li>
-        <li><b>E</b> springt zum nächsten Gegner, <b>M</b> zeigt die Karte.</li>`}
+        <li><b>E</b> dreht zum nächsten Gegner und stellt bei Granaten die passende Kraft ein, <b>M</b> zeigt die Karte.</li>
+        <li><b>Enter</b> feuert mit der eingestellten Kraft (Kreis = Einschlag), <b>Leertaste halten</b> lädt die Kraft selbst auf.</li>`}
+        <li>Das <b>Fadenkreuz</b> sitzt genau dort, wo der Schuss hingeht – <b style="color:#ff5a4a">rot</b> = Treffer. Bei Wurfwaffen zeigt der <b>Kreis</b> den Einschlag samt Wind.</li>
         <li>Pro Zug: <b>ein</b> Rindsviech bewegen und <b>einmal</b> angreifen. Die Ausdauer begrenzt den Weg.</li>
         <li>Achtung auf den <b>Wind</b> (oben) und aufs <b>Wasser</b> – wer reinfällt, ersauft.</li>
       </ul>

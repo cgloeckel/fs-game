@@ -347,8 +347,9 @@ export const DEFAULT_SETTINGS = {
   quality: 'auto', // auto | low | medium | high
   sfx: 0.8,
   music: 0.45,
-  aimHelp: 'short', // off | short | full
+  aimHelp: 'full', // off | short | full
   turnTime: 60,
   camSens: 1,
   showFps: false,
+  v: 2,
 };

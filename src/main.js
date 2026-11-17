@@ -19,6 +19,12 @@ class App {
     this.params = new URLSearchParams(location.search);
     this.settings = { ...DEFAULT_SETTINGS };
     try { Object.assign(this.settings, JSON.parse(localStorage.getItem(SETTINGS_KEY) || '{}')); } catch (e) { /* egal */ }
+    if (!this.settings.v || this.settings.v < 2) {
+      // Version 2: volle Zielhilfe als Standard
+      this.settings.aimHelp = 'full';
+      this.settings.v = 2;
+      try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(this.settings)); } catch (e) { /* egal */ }
+    }
     this.quality = this.resolveQuality();
     this.renderScale = 1;
     this.timeScale = Number(this.params.get('speed')) || 1;

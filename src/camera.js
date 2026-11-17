@@ -78,23 +78,33 @@ export class CameraRig {
       case 'aim': {
         if (o) {
           const fx = Math.sin(o.yaw), fz = Math.cos(o.yaw);
-          const rx = -fz, rz = fx;
-          const ball = this.opts && this.opts.ballistic;
-          const side = ball ? 1.15 : 0.9;
-          const ahead = ball ? 2.2 : 1.4;
-          this.goal.set(o.pos.x + rx * side + fx * ahead, o.pos.y + (ball ? 2.0 : 1.75), o.pos.z + rz * side + fz * ahead);
+          const ap = o.aimPitch;
+          const cp = Math.cos(ap), sp = Math.sin(ap);
           wantYaw = o.yaw + Math.PI;
           snap = 10;
           if (this.opts && this.opts.sniper) {
+            // Zielfernrohr: direkt aus dem Kopf
             this.goal.set(o.pos.x + fx * 0.5, o.pos.y + 1.85, o.pos.z + fz * 0.5);
             this.goalDist = 0.6;
-            this.goalPitch = -o.aimPitch;
+            this.goalPitch = -ap;
             this.goalFov = 24;
-          } else {
-            this.goalDist = (this.opts && this.opts.ballistic ? 7.2 : 5.0) * Math.sqrt(this.manualZoom);
-            const ap = o.aimPitch;
-            this.goalPitch = this.opts && this.opts.ballistic ? clamp(0.3 - ap * 0.15, 0.12, 0.45) : clamp(0.18 - ap * 0.8, -0.35, 0.8);
+          } else if (this.opts && this.opts.ballistic) {
+            // Hoch hinter dem Schützen, Blick auf die Strecke bis zum Einschlag
+            const land = clamp(o.aimLandDist || 14, 4, 50);
+            const ahead = land * 0.42;
+            this.goal.set(o.pos.x + fx * ahead, o.pos.y + 1.0, o.pos.z + fz * ahead);
+            this.goalDist = (8 + land * 0.62) * Math.sqrt(this.manualZoom);
+            this.goalPitch = 0.56;
             this.goalFov = 55;
+            snap = 4;
+          } else {
+            // Direkt hinter dem Schützen, Blick entlang der Schusslinie
+            const L = 10;
+            const mx = o.pos.x + fx * 0.75 * cp, my = o.pos.y + 1.3 + 0.75 * sp, mz = o.pos.z + fz * 0.75 * cp;
+            this.goal.set(mx + fx * cp * L, my + sp * L, mz + fz * cp * L);
+            this.goalDist = (L + 4.5) * Math.sqrt(this.manualZoom);
+            this.goalPitch = clamp(0.2 - ap, -1.2, 1.3);
+            this.goalFov = 52;
           }
         }
         break;

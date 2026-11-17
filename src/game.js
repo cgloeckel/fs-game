@@ -59,6 +59,9 @@ export class Game {
     this.settleT2 = 0;
     this.shot = null;
     this.lastEvent = null;
+    this.lastPower = {};
+    this.powerHint = null;
+    this.aimInfo = null;
     this.targetPoint = null;
     this.saidBlock = 0;
     this.log = [];
@@ -169,7 +172,10 @@ export class Game {
     this.laser = new THREE.Line(this.laserGeo, new THREE.LineBasicMaterial({ color: 0xff3b30, transparent: true, opacity: 0.7 }));
     this.laser.frustumCulled = false;
     this.laser.visible = false;
-    this.scene.add(this.arrow, this.marker, this.rangeRing, this.preview, this.laser);
+    this.impactRing = new THREE.Mesh(itemGeometry('marker'), new THREE.MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthTest: false }));
+    this.impactRing.renderOrder = 6;
+    this.impactRing.visible = false;
+    this.scene.add(this.arrow, this.marker, this.rangeRing, this.preview, this.laser, this.impactRing);
   }
 
   scatterMines(n) {
@@ -270,6 +276,7 @@ export class Game {
     this.charging = false;
     this.power = 0;
     this.targetPoint = null;
+    this.targetCycle = -1;
     this.weapon = u.weapon && u.ammo[u.weapon] !== 0 && u.ammo[u.weapon] !== undefined ? u.weapon : u.defaultWeapon();
     u.setHeld(this.weapon);
     this.phase = team.human ? 'move' : 'ai';
@@ -453,13 +460,17 @@ export class Game {
       case 'fireDown': {
         if (this.phase === 'aim') {
           const W = WEAPONS[this.weapon];
-          if (W.type === 'ballistic') { this.charging = true; this.power = 0; }
+          if (W.type === 'ballistic') { this.charging = true; this.power = 0; this.chargeStart = performance.now(); }
           else this.fire();
         } else if (this.phase === 'target' && this.targetPoint) this.fire();
         break;
       }
       case 'fireUp':
-        if (this.phase === 'aim' && this.charging) this.fire();
+        if (this.phase === 'aim' && this.charging) {
+          // Kurz antippen = mit der eingestellten Kraft (siehe Einschlagskreis) feuern
+          if (performance.now() - (this.chargeStart || 0) < 230) this.fire({ power: this.presetPower() });
+          else this.fire();
+        }
         break;
       case 'jump':
         if ((this.phase === 'move' || this.phase === 'retreat') && u.jump()) {
@@ -497,6 +508,7 @@ export class Game {
     const next = alive[(i + 1) % alive.length];
     this.unit.aiming = false;
     this.unit = next;
+    this.targetCycle = -1;
     next.stamina = 100;
     this.weapon = next.weapon && next.ammo[next.weapon] ? next.weapon : next.defaultWeapon();
     next.setHeld(this.weapon);
@@ -545,22 +557,132 @@ export class Game {
     this.hud.phase(this);
   }
 
+  // Freie Schusslinie für Direktwaffen suchen (Körper, Kopf, Beine)
+  aimDirect(u, W, t) {
+    for (const dy of [0.95, 1.85, 0.5, 1.4]) {
+      const m = u.muzzle();
+      const c = new V3(t.pos.x, t.pos.y + dy, t.pos.z);
+      u.aimPitch = clamp(Math.atan2(c.y - m.y, dist2D(m.x, m.z, c.x, c.z)), this.pitchMin(W), this.pitchMax(W));
+      const hit = this.traceRay(u.muzzle(), u.aimDir(), W.range, u);
+      if (hit.unit === t) return true;
+    }
+    const c = t.getCenter();
+    const m = u.muzzle();
+    u.aimPitch = clamp(Math.atan2(c.y - m.y, dist2D(m.x, m.z, c.x, c.z)), this.pitchMin(W), this.pitchMax(W));
+    return false;
+  }
+
+  // Winkel, Kraft und (bei voller Zielhilfe) Windausgleich für Wurfwaffen
+  aimBallistic(u, W, t, full) {
+    const id = this.weapon;
+    const order = id === 'panzerfaust' ? [10, 18, 28, 40, 52] : W.minPitch ? [60, 50, 70, 45] : [45, 35, 55, 65, 25];
+    const baseYaw = Math.atan2(t.pos.x - u.pos.x, t.pos.z - u.pos.z);
+    let best = null;
+    for (const deg of order) {
+      if (W.minPitch !== undefined && deg < W.minPitch) continue;
+      u.aimPitch = clamp(deg * DEG, this.pitchMin(W), this.pitchMax(W));
+      u.yaw = baseYaw;
+      let res = null;
+      for (let it = 0; it < (full ? 3 : 1); it++) {
+        res = this.solvePower(u, W, t.pos, full);
+        if (!res || !full) break;
+        // seitliche Abdrift durch Wind ausgleichen
+        const o = u.muzzle();
+        const aI = Math.atan2(res.x - o.x, res.z - o.z);
+        const aT = Math.atan2(t.pos.x - o.x, t.pos.z - o.z);
+        let d = aT - aI;
+        while (d > Math.PI) d -= Math.PI * 2;
+        while (d < -Math.PI) d += Math.PI * 2;
+        if (Math.abs(d) < 0.003) break;
+        u.yaw += d;
+      }
+      if (!res) continue;
+      if (!best || res.err < best.err) best = { pitch: u.aimPitch, yaw: u.yaw, power: res.power, err: res.err };
+      if (res.err < W.radius * 0.45) break;
+    }
+    if (!best) { u.yaw = baseYaw; return null; }
+    u.aimPitch = best.pitch;
+    u.yaw = best.yaw;
+    return best;
+  }
+
   nextTarget() {
     const u = this.unit;
+    const W = WEAPONS[this.weapon];
     const enemies = this.units.filter((t) => t.alive && t.team !== u.team);
     if (!enemies.length) return;
     enemies.sort((a, b) => a.pos.distanceTo(u.pos) - b.pos.distanceTo(u.pos));
-    this.targetCycle = ((this.targetCycle || 0) + 1) % enemies.length;
-    const t = enemies[this.targetCycle % enemies.length];
-    u.yaw = Math.atan2(t.pos.x - u.pos.x, t.pos.z - u.pos.z);
-    const W = WEAPONS[this.weapon];
+    // Gegner mit freier Linie bzw. in Reichweite zuerst
     if (W.type === 'hitscan' || W.type === 'cone') {
-      const m = u.muzzle();
-      const c = t.getCenter();
-      u.aimPitch = clamp(Math.atan2(c.y - m.y, dist2D(m.x, m.z, c.x, c.z)), this.pitchMin(W), this.pitchMax(W));
+      const y0 = u.yaw, p0 = u.aimPitch;
+      const ok = new Set();
+      for (const t of enemies) {
+        u.yaw = Math.atan2(t.pos.x - u.pos.x, t.pos.z - u.pos.z);
+        if (this.aimDirect(u, W, t)) ok.add(t);
+      }
+      u.yaw = y0; u.aimPitch = p0;
+      enemies.sort((a, b) => (ok.has(b) ? 1 : 0) - (ok.has(a) ? 1 : 0));
     }
-    this.hud.toast(`Ziel: ${t.name} (${Math.round(t.pos.distanceTo(u.pos))} m)`);
+    this.targetCycle = ((this.targetCycle ?? -1) + 1) % enemies.length;
+    const t = enemies[this.targetCycle];
+    u.yaw = Math.atan2(t.pos.x - u.pos.x, t.pos.z - u.pos.z);
+    const dist = Math.round(t.pos.distanceTo(u.pos));
+    this.powerHint = null;
+    if (W.type === 'hitscan' || W.type === 'cone') {
+      const free = this.aimDirect(u, W, t);
+      this.hud.toast(`Ziel: ${t.name} (${dist} m)${dist > W.range ? ' – z\'weit weg!' : !free ? ' – Deckung im Weg, geh woanders hin!' : ''}`);
+    } else if (W.type === 'ballistic') {
+      const help = this.settings.aimHelp || 'full';
+      if (help !== 'off') {
+        const r = this.aimBallistic(u, W, t, help === 'full');
+        if (r && r.err < W.radius * 1.5) {
+          this.lastPower[this.weapon] = r.power;
+          this.powerHint = { power: r.power, yaw: u.yaw, pitch: u.aimPitch };
+          this.hud.toast(`Ziel: ${t.name} (${dist} m) – 🔥 antippen zum Feuern`);
+        } else {
+          if (r) this.lastPower[this.weapon] = r.power;
+          this.hud.toast(`${t.name} (${dist} m): mit ${W.name} schwer zu erwischen – probier a andere Waffe oder geh näher hin.`);
+        }
+      } else {
+        u.aimPitch = clamp(45 * DEG, this.pitchMin(W), this.pitchMax(W));
+        this.hud.toast(`Ziel: ${t.name} (${dist} m)`);
+      }
+    } else {
+      this.hud.toast(`Ziel: ${t.name} (${dist} m)`);
+    }
     this.sfx('click');
+  }
+
+  presetPower() { return this.lastPower[this.weapon] || 0.6; }
+
+  // Kraft, mit der ein Wurf bei aktuellem Winkel am Ziel landet (Binärsuche)
+  solvePower(u, W, target, withWind) {
+    const env = withWind ? this.env : this.envCalm;
+    env.owner = u;
+    const o = u.muzzle();
+    const fx = Math.sin(u.yaw), fz = Math.cos(u.yaw);
+    const want = (target.x - o.x) * fx + (target.z - o.z) * fz;
+    const dir = u.aimDir();
+    let last = null;
+    const along = (pw) => {
+      last = simulate(W, o, dir.clone().multiplyScalar(W.speed * pw), env, 8);
+      return (last.x - o.x) * fx + (last.z - o.z) * fz;
+    };
+    let res = null;
+    if (along(1) >= want - W.radius * 0.5) {
+      let lo = 0.04, hi = 1;
+      for (let i = 0; i < 16; i++) {
+        const m = (lo + hi) / 2;
+        if (along(m) < want) lo = m; else hi = m;
+      }
+      const power = (lo + hi) / 2;
+      along(power);
+      const bad = last.type === 'water' || last.type === 'gone' || last.type === 'timeout';
+      const err = Math.hypot(last.x - target.x, last.z - target.z) + (bad ? 50 : 0) + Math.max(0, Math.abs(last.y - target.y) - 1.5);
+      res = { power, err, x: last.x, z: last.z };
+    }
+    env.owner = null;
+    return res;
   }
 
   onTap(nx, ny) {
@@ -614,7 +736,8 @@ export class Game {
       case 'KeyF':
         if (this.phase === 'move') this.cmd('aim');
         else if (this.phase === 'aim') {
-          if (WEAPONS[this.weapon].type === 'ballistic') { this.power = this.power || 0.75; this.fire(); } else this.cmd('fireDown');
+          if (WEAPONS[this.weapon].type === 'ballistic') this.fire({ power: this.presetPower() });
+          else this.cmd('fireDown');
         } else if (this.phase === 'target') this.cmd('fireDown');
         break;
       case 'KeyQ':
@@ -781,6 +904,7 @@ export class Game {
     const dir = u.aimDir();
     const origin = u.muzzle();
     const vel = dir.clone().multiplyScalar(W.speed * p);
+    if (u.team.human) this.lastPower[id] = p;
     if (W.throw) {
       u.throwAnim = 1;
       this.sfx('throwSnd');
@@ -1222,9 +1346,10 @@ export class Game {
     } else if (this.phase === 'aim') {
       const W = WEAPONS[this.weapon];
       const fine = inp.fine ? 0.25 : 1;
-      if (inp.x) u.yaw -= inp.x * 1.2 * dt * fine;
-      if (inp.y) u.aimPitch = clamp(u.aimPitch + inp.y * 0.8 * dt * fine, this.pitchMin(W), this.pitchMax(W));
-      if (this.charging) this.power = Math.min(1, this.power + dt / 1.6);
+      // quadratische Kennlinie: kleine Ausschläge = feines Zielen
+      if (inp.x) u.yaw -= inp.x * Math.abs(inp.x) * 1.1 * dt * fine;
+      if (inp.y) u.aimPitch = clamp(u.aimPitch + inp.y * Math.abs(inp.y) * 0.7 * dt * fine, this.pitchMin(W), this.pitchMax(W));
+      if (this.charging) this.power = Math.min(1, this.power + dt / 2.2);
     }
     if (this.phase !== 'retreat') {
       this.turnTimer -= dt;
@@ -1502,37 +1627,79 @@ export class Game {
       this.arrow.position.set(u.pos.x, u.pos.y + 3.05 + Math.sin(this.time * 4) * 0.1, u.pos.z);
       this.arrow.rotation.y += dt * 2.5;
     }
-    // Flugbahnvorschau
+    // Zielhilfe: Flugbahn, Einschlagskreis, Fadenkreuz
     let shown = 0;
+    let ringOn = false;
     const W = this.weapon ? WEAPONS[this.weapon] : null;
-    const help = this.settings.aimHelp || 'short';
-    if (active && ph === 'aim' && W && W.type === 'ballistic' && help !== 'off' && this.team.human) {
-      const pw = this.charging ? Math.max(0.06, this.power) : 0.7;
+    const help = this.settings.aimHelp || 'full';
+    this.aimInfo = null;
+    const humanAim = !!(active && ph === 'aim' && W && this.team.human);
+    if (this.powerHint && (!humanAim || Math.abs(u.yaw - this.powerHint.yaw) > 0.015 || Math.abs(u.aimPitch - this.powerHint.pitch) > 0.015)) this.powerHint = null;
+    if (humanAim && W.type === 'ballistic') {
+      const pw = this.charging ? Math.max(0.04, this.power) : this.presetPower();
       const vel = u.aimDir().multiplyScalar(W.speed * pw);
       const path = [];
-      const env = help === 'full' ? this.env : this.envCalm;
+      const full = help === 'full';
+      const env = full ? this.env : this.envCalm;
       env.owner = u;
-      simulate(W, u.muzzle(), vel, env, help === 'full' ? 7 : 0.55, path);
+      const r = simulate(W, u.muzzle(), vel, env, full ? 8 : 0.55, help === 'off' ? null : path);
       env.owner = null;
-      const n = Math.min(150, path.length / 3);
-      for (let i = 0; i < n * 3; i++) this.previewArr[i] = path[i];
-      shown = n;
-      this.previewGeo.attributes.position.needsUpdate = true;
+      if (help !== 'off') {
+        const n = Math.min(150, path.length / 3);
+        for (let i = 0; i < n * 3; i++) this.previewArr[i] = path[i];
+        shown = n;
+        this.previewGeo.attributes.position.needsUpdate = true;
+      }
+      if (full && r.type !== 'timeout' && r.type !== 'gone') {
+        const water = r.type === 'water';
+        const p = new V3(r.x, water ? this.terrain.waterLevel : r.y, r.z);
+        u.aimLandDist = dist2D(u.pos.x, u.pos.z, p.x, p.z);
+        let enemy = null, friend = null, best = Infinity;
+        for (const t of this.units) {
+          if (!t.alive) continue;
+          const d = t.getCenter().distanceTo(p);
+          if (d < W.radius * 0.85) {
+            if (t.team !== u.team) { if (d < best) { best = d; enemy = t; } } else friend = t;
+          }
+        }
+        ringOn = true;
+        this.impactRing.position.set(p.x, p.y + 0.15, p.z);
+        this.impactRing.scale.setScalar(W.radius * (1 + Math.sin(this.time * 8) * 0.04));
+        this.impactRing.material.color.set(enemy ? '#ff2a2a' : friend ? '#ffd54f' : water ? '#8fd3ff' : '#ffffff');
+        this.aimInfo = { point: p, enemy, friend, water, dist: u.aimLandDist, ballistic: true };
+      } else if (!full) {
+        u.aimLandDist = clamp(W.speed * pw * 1.1, 6, 40);
+      }
     }
+    this.impactRing.visible = ringOn;
     this.previewGeo.setDrawRange(0, shown);
     this.preview.visible = shown > 0;
-    // Laser für direkte Waffen
-    const laserOn = active && ph === 'aim' && W && (W.type === 'hitscan' || W.type === 'cone') && this.team.human && !W.pellets;
-    this.laser.visible = !!laserOn;
-    if (laserOn) {
+    // Laser und Fadenkreuz für direkte Waffen
+    const direct = humanAim && (W.type === 'hitscan' || W.type === 'cone');
+    this.laser.visible = !!direct && !W.pellets;
+    if (direct) {
       const o = u.muzzle();
       const d = u.aimDir();
-      const hit = this.traceRay(o, d, W.type === 'cone' ? W.range : W.range, u);
+      const hit = this.traceRay(o, d, W.range, u);
       const pos = this.laserGeo.attributes.position;
       pos.setXYZ(0, o.x, o.y, o.z);
       pos.setXYZ(1, hit.point.x, hit.point.y, hit.point.z);
       pos.needsUpdate = true;
-      this.laser.material.color.set(hit.unit ? (hit.unit.team === u.team ? '#ffd54f' : '#ff2a2a') : '#ffffff');
+      const enemy = hit.unit && hit.unit.team !== u.team ? hit.unit : null;
+      const friend = hit.unit && hit.unit.team === u.team ? hit.unit : null;
+      this.laser.material.color.set(enemy ? '#ff2a2a' : friend ? '#ffd54f' : '#ffffff');
+      this.aimInfo = { point: hit.point, enemy, friend, head: !!hit.head, dist: hit.dist, range: !hit.unit && !hit.terrain && !hit.prop, blocked: !hit.unit && (hit.terrain || hit.prop) && hit.dist < 25 };
+    } else if (humanAim && W.type === 'melee') {
+      const f = u.forward();
+      let enemy = null;
+      for (const t of this.units) {
+        if (!t.alive || t.team === u.team) continue;
+        const dx = t.pos.x - u.pos.x, dz = t.pos.z - u.pos.z;
+        const dd = Math.hypot(dx, dz);
+        if (dd <= W.range && (dx * f.x + dz * f.z) / (dd || 1) > Math.cos(60 * DEG) && Math.abs(t.pos.y - u.pos.y) < 1.6) enemy = t;
+      }
+      const p = enemy ? enemy.getHead().clone() : new V3(u.pos.x + f.x * 2, u.pos.y + 1.2, u.pos.z + f.z * 2);
+      this.aimInfo = { point: p, enemy, melee: true };
     }
     // Zielmarker
     this.marker.visible = !!(active && ph === 'target' && this.targetPoint);

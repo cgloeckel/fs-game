@@ -484,6 +484,7 @@ export class AI {
       pitch += gauss() * D.pitch * DEG;
       power = clamp(power + gauss() * D.power, 0.05, 1);
     }
+    u.aimLandDist = plan.point ? dist2D(u.pos.x, u.pos.z, plan.point.x, plan.point.z) : undefined;
     if (W.type !== 'melee' && W.type !== 'place') u.aiming = true;
     await this.turnTo(u, yaw);
     if (!this.ok(u)) return;

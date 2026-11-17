@@ -465,7 +465,7 @@ export class Menus {
           <label>Grafik<select data-s="quality">${opt([['auto', 'Automatisch'], ['low', 'Niedrig (schwache Handys)'], ['medium', 'Mittel'], ['high', 'Hoch (Full HD+)']], st.quality)}</select></label>
           <label>Effekte <input type="range" min="0" max="1" step="0.05" data-s="sfx" value="${st.sfx}"></label>
           <label>Musik <input type="range" min="0" max="1" step="0.05" data-s="music" value="${st.music}"></label>
-          <label>Zielhilfe<select data-s="aimHelp">${opt([['off', 'Aus (wie anno dazumal)'], ['short', 'Kurze Flugbahn'], ['full', 'Volle Flugbahn mit Wind']], st.aimHelp)}</select></label>
+          <label>Zielhilfe<select data-s="aimHelp">${opt([['full', 'Voll: Flugbahn, Wind & Einschlag (empfohlen)'], ['short', 'Kurz: nur Abwurfrichtung'], ['off', 'Aus (wie anno dazumal)']], st.aimHelp)}</select></label>
           <label>Rundenzeit (Feldzug)<select data-s="turnTime">${opt([[45, '45 s'], [60, '60 s'], [90, '90 s'], [9999, 'Unbegrenzt']], st.turnTime)}</select></label>
           <label>Kamera-/Ziel-Empfindlichkeit <input type="range" min="0.4" max="2" step="0.1" data-s="camSens" value="${st.camSens}"></label>
           <label class="chk"><input type="checkbox" data-s="showFps"${st.showFps ? ' checked' : ''}> FPS anzeigen</label>
@@ -493,8 +493,9 @@ export class Menus {
         <h3>Steuerung am Handy &amp; Tablet</h3>
         <ul>
           <li>Joystick links unten: gehen und drehen. Wischen: Kamera drehen. Zwei Finger: Zoom.</li>
-          <li>🎯 <b>Zielen</b> → wischen oder Joystick für Richtung und Winkel. ⌖ springt zum nächsten Gegner.</li>
-          <li>🔥 <b>Halten</b> lädt bei Wurf- und Schusswaffen mit Bogen die Kraft auf, Loslassen feuert.</li>
+          <li>🎯 <b>Zielen</b> → wischen oder Joystick für Richtung und Winkel. ⌖ dreht zum nächsten Gegner.</li>
+          <li>Das <b>Fadenkreuz</b> zeigt genau, wo der Schuss hingeht – rot heißt Treffer. Bei Granaten &amp; Co. zeigt der <b>Kreis</b> den Einschlag inklusive Wind; ⌖ setzt dazu eine Markierung am Kraftbalken.</li>
+          <li>🔥 <b>Antippen</b> feuert Wurfwaffen mit der eingestellten Kraft (der Kreis zeigt den Einschlag), <b>Halten</b> lädt die Kraft selbst auf.</li>
           <li>Luftschläge &amp; Fallschirm: aufs Ziel tippen, nochmal tippen oder 🔥 = los.</li>
         </ul>
         <h3>Steuerung am Computer</h3>
