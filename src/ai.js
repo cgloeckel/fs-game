@@ -6,8 +6,12 @@ import { clamp, dist2D, DEG, angleDiff } from './util.js';
 
 const V3 = THREE.Vector3;
 
-function gauss() {
-  return (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
+// Normalverteilte Zufallszahl (Box-Muller)
+function randn() {
+  let u = 0, v = 0;
+  while (u === 0) u = Math.random();
+  while (v === 0) v = Math.random();
+  return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
 }
 
 function aimDir(yaw, pitch, out = new V3()) {
@@ -53,6 +57,9 @@ export class AI {
     const g = this.game;
     await g.wait(0.7 + 0.5 * this.D.think);
     if (!this.ok(u)) return this.finish();
+    // Den Wind schätzt a Rindsviech nie ganz richtig ein
+    const k = clamp(1 + randn() * this.D.windErr, -0.2, 2);
+    this.env = { ...g.env, wind: { x: g.wind.x * k, z: g.wind.z * k }, owner: null };
     u = await this.chooseUnit(u);
     if (!this.ok(u)) return this.finish();
     let plan = await this.plan(u, u.pos.clone(), false);
@@ -180,7 +187,7 @@ export class AI {
 
   async ballisticPlan(u, W, id, t, from, quick) {
     const g = this.game;
-    const env = g.env;
+    const env = this.env || g.env;
     const aimPt = W.impact ? t.getCenter().clone() : t.pos.clone();
     const o0 = new V3(from.x, from.y + 1.3, from.z);
     let yaw = Math.atan2(aimPt.x - from.x, aimPt.z - from.z);
@@ -243,8 +250,17 @@ export class AI {
       score = this.explosionScore(best.pt, W.radius, W.dmg, u, from);
       if (W.cluster) score *= 1.35;
       if (W.gas) score += this.explosionScore(best.pt, W.gas.radius, W.gas.dmg * 2, u, from) * 0.8;
+      if (W.swarm) {
+        let nearest = null, nd = W.swarm.range;
+        for (const e of g.units) {
+          if (!e.alive || e.team === u.team) continue;
+          const d = e.getCenter().distanceTo(best.pt);
+          if (d < nd) { nd = d; nearest = e; }
+        }
+        if (nearest) score += Math.min(W.swarm.dmg, nearest.hp) + (W.swarm.dmg >= nearest.hp ? 25 : 0);
+      }
     }
-    if (best.err > W.radius * 1.4) score *= 0.4;
+    if (!W.swarm && best.err > W.radius * 1.4) score *= 0.4;
     return { score, weapon: id, yaw: best.yaw, pitch: best.pitch, power: best.power, kind: 'ballistic', point: best.pt, err: best.err };
   }
 
@@ -255,9 +271,11 @@ export class AI {
     enemies.sort((a, b) => dist2D(a.pos.x, a.pos.z, from.x, from.z) - dist2D(b.pos.x, b.pos.z, from.x, from.z));
     const targets = enemies.slice(0, quick ? 2 : 4);
     let best = { score: 0 };
+    const all = [];
     const consider = (p, cost) => {
       if (!p) return;
       p.score -= cost;
+      if (p.score > 0) all.push(p);
       if (p.score > best.score) best = p;
     };
     let ballisticDone = 0;
@@ -317,9 +335,25 @@ export class AI {
           }
           break;
         }
+        case 'drive': {
+          for (const t of targets) {
+            const yaw = Math.atan2(t.pos.x - from.x, t.pos.z - from.z);
+            const d = g.simulateDrive(from, yaw, u);
+            if (d.type === 'water') continue;
+            const pt = new V3(d.x, d.y + 0.8, d.z);
+            consider({ score: this.explosionScore(pt, W.radius, W.dmg, u, from), weapon: id, kind: 'drive', yaw, pitch: 0, power: 1, point: pt }, cost + 4);
+          }
+          break;
+        }
         default:
           break;
       }
+    }
+    // Manchmal nimmt a Viech ned die beste, sondern die zweit- oder drittbeste Idee
+    if (!quick && best.weapon && all.length > 1 && Math.random() < this.D.sloppy) {
+      all.sort((a, b) => b.score - a.score);
+      const alt = all[1 + Math.floor(Math.random() * Math.min(2, all.length - 1))];
+      if (alt && alt.score > best.score * 0.3) best = alt;
     }
     return best.weapon ? best : null;
   }
@@ -466,8 +500,8 @@ export class AI {
       await g.wait(0.7);
       if (!this.ok(u)) return;
       const tgt = plan.target.clone();
-      tgt.x += gauss() * D.yaw * 0.6;
-      tgt.z += gauss() * D.yaw * 0.6;
+      tgt.x += randn() * D.yaw * 0.6;
+      tgt.z += randn() * D.yaw * 0.6;
       tgt.y = g.terrain.heightAt(tgt.x, tgt.z);
       await g.fire({ target: tgt });
       return;
@@ -479,13 +513,25 @@ export class AI {
       return;
     }
     let yaw = plan.yaw, pitch = plan.pitch || 0, power = plan.power || 1;
-    if (W.type === 'ballistic' || W.type === 'hitscan') {
-      yaw += gauss() * D.yaw * DEG;
-      pitch += gauss() * D.pitch * DEG;
-      power = clamp(power + gauss() * D.power, 0.05, 1);
+    let blunder = false;
+    if (W.type === 'ballistic' || W.type === 'hitscan' || W.type === 'drive') {
+      // menschliche Streuung: bei Gewehren weniger, beim Traktor nur die Richtung
+      const k = W.type === 'hitscan' ? 0.45 : W.type === 'drive' ? 0.6 : 1;
+      yaw += randn() * D.yaw * k * DEG;
+      if (W.type !== 'drive') pitch += randn() * D.pitch * k * DEG;
+      if (W.type === 'ballistic') power = clamp(power * (1 + randn() * D.power), 0.05, 1);
+      // ab und zu a grober Patzer
+      if (Math.random() < D.blunder) {
+        blunder = true;
+        const r = Math.random();
+        const sgn = Math.random() < 0.5 ? -1 : 1;
+        if (r < 0.4 && W.type === 'ballistic') power = clamp(power * (sgn < 0 ? 0.55 + Math.random() * 0.2 : 1.3 + Math.random() * 0.2), 0.05, 1);
+        else if (r < 0.75 || W.type === 'drive') yaw += sgn * (8 + Math.random() * 10) * DEG;
+        else pitch += sgn * (8 + Math.random() * 10) * DEG;
+      }
     }
     u.aimLandDist = plan.point ? dist2D(u.pos.x, u.pos.z, plan.point.x, plan.point.z) : undefined;
-    if (W.type !== 'melee' && W.type !== 'place') u.aiming = true;
+    if (W.type !== 'melee' && W.type !== 'place' && W.type !== 'drive') u.aiming = true;
     await this.turnTo(u, yaw);
     if (!this.ok(u)) return;
     if (W.type === 'ballistic' || W.type === 'hitscan' || W.type === 'cone') await this.pitchTo(u, pitch);
@@ -504,6 +550,6 @@ export class AI {
       await g.wait(0.45);
     }
     if (!this.ok(u)) return;
-    await g.fire({ yaw, pitch, power });
+    await g.fire({ yaw, pitch, power, blunder });
   }
 }

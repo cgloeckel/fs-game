@@ -230,6 +230,39 @@ class AudioEngine {
     this.noise({ dur: 2.8, freq: 300, freqEnd: 2200, type: 'bandpass', q: 0.7, gain: 0.5, attack: 0.9 });
   }
 
+  buzz() {
+    if (!this.ok || !this.throttle('buzz', 260)) return;
+    const c = this.ctx, t = c.currentTime;
+    const o = c.createOscillator();
+    o.type = 'sawtooth';
+    o.frequency.setValueAtTime(210 + Math.random() * 40, t);
+    const lfo = c.createOscillator();
+    lfo.frequency.value = 30;
+    const lg = c.createGain();
+    lg.gain.value = 25;
+    lfo.connect(lg).connect(o.frequency);
+    const f = c.createBiquadFilter();
+    f.type = 'bandpass'; f.frequency.value = 900; f.Q.value = 1.5;
+    const g = c.createGain();
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(0.12, t + 0.05);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + 0.3);
+    o.connect(f).connect(g).connect(this.sfxGain);
+    o.start(t); lfo.start(t);
+    o.stop(t + 0.32); lfo.stop(t + 0.32);
+  }
+
+  engine() {
+    if (!this.ok || !this.throttle('engine', 110)) return;
+    this.tone({ freq: 70 + Math.random() * 10, freqEnd: 55, dur: 0.09, type: 'square', gain: 0.12 });
+    this.noise({ dur: 0.08, freq: 400, freqEnd: 150, gain: 0.15 });
+  }
+
+  sting() {
+    if (!this.ok) return;
+    this.tone({ freq: 1200, freqEnd: 600, dur: 0.12, type: 'sawtooth', gain: 0.1 });
+  }
+
   turnStart() {
     if (!this.ok) return;
     this.bell(0.25, 0, 1);

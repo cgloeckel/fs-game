@@ -174,7 +174,7 @@ export class HUD {
     show('overview', mv || aim);
     const fireBtn = r.querySelector('[data-cmd="fire"] span');
     if (fireBtn && W) {
-      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.type === 'jump' ? 'Spring!' : W.type === 'ballistic' ? 'Tipp/Halten' : 'Feuer';
+      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.type === 'jump' ? 'Spring!' : W.type === 'drive' ? 'Los!' : W.type === 'ballistic' ? 'Tipp/Halten' : 'Feuer';
     }
     r.querySelector('.joy').classList.toggle('off', !(mv || aim || ret) || game.overview);
     this.updateWeaponButton(game);
@@ -402,7 +402,7 @@ export class HUD {
       xh.classList.toggle('on', !!ai0.enemy);
       xh.classList.toggle('friend', !ai0.enemy && !!ai0.friend);
       let t = '';
-      if (ai0.enemy) t = ai0.melee ? `${ai0.enemy.s.name} in Reichweite!` : ai0.head ? `Kopf! ${ai0.enemy.s.name}` : `Treffer: ${ai0.enemy.s.name}`;
+      if (ai0.enemy) t = ai0.melee ? `${ai0.enemy.s.name} in Reichweite!` : ai0.swarm ? `Schwarm auf: ${ai0.enemy.s.name}` : ai0.head ? `Kopf! ${ai0.enemy.s.name}` : `Treffer: ${ai0.enemy.s.name}`;
       else if (ai0.friend) t = `Achtung, ${ai0.friend.s.name}!`;
       else if (ai0.water) t = 'Ins Wasser';
       else if (ai0.melee) t = 'Ka Gegner in Reichweite';

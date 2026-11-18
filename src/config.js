@@ -101,6 +101,20 @@ export const WEAPONS = {
     mesh: 'moerser', tube: true, minPitch: 35,
     desc: 'Hoher Bogen, großes Loch. Über Hügel drüber schießen!',
   },
+  mistgabel: {
+    name: 'Mistgabel', icon: '🔱', type: 'ballistic', speed: 24, impact: true, pierce: true, radius: 1.2, dmg: 46, wind: 0.25,
+    mesh: 'gabel', throw: true,
+    desc: 'Frisch vom Misthaufen. Wer getroffen wird, hat drei Löcher mehr. Daneben bleibt sie halt im Boden stecken.',
+  },
+  wespen: {
+    name: 'Wespennest', icon: '🐝', type: 'ballistic', speed: 18, impact: true, radius: 1.6, dmg: 6, wind: 0.4,
+    swarm: { range: 16, dmg: 28, speed: 6.5, life: 7 }, mesh: 'nest', throw: true,
+    desc: 'Nach dem Aufprall sucht si da Schwarm den nächsten Gegner im Umkreis. Stichig, grantig, unaufhaltsam.',
+  },
+  traktor: {
+    name: 'Amok-Traktor', icon: '🚜', type: 'drive', speed: 6.5, time: 5.5, radius: 4.6, dmg: 56,
+    desc: 'Ohne Fahrer, ohne Bremse, voller Sprengstoff. Fahrt gradaus, bis er wo anrennt – Hang, Baum oder Gegner.',
+  },
   mine: {
     name: 'Kuhfladen-Mine', icon: '🟤', type: 'place', radius: 3.4, dmg: 45,
     desc: 'Schaut aus wia a Kuhfladen. Is aber kana. Scharf ab der nächsten Runde.',
@@ -136,37 +150,40 @@ export const WEAPONS = {
 };
 
 export const WEAPON_ORDER = [
-  'kopfnuss', 'pistole', 'gewehr', 'mg', 'flinte', 'sniper',
-  'granate', 'splitter', 'guelle', 'panzerfaust', 'moerser', 'heiligekuh',
+  'kopfnuss', 'pistole', 'gewehr', 'mg', 'flinte', 'sniper', 'mistgabel',
+  'granate', 'splitter', 'guelle', 'wespen', 'panzerfaust', 'moerser', 'heiligekuh', 'traktor',
   'mine', 'tnt', 'flammen', 'jause', 'lazarett', 'sprung', 'haubitze', 'jet',
 ];
 
 const LOADOUTS = {
-  rekrut: { gewehr: 2, granate: 2 },
+  rekrut: { gewehr: 2, granate: 2, mistgabel: 1 },
   schwer: [
-    { gewehr: 3, granate: 2, panzerfaust: 2 },
-    { gewehr: 3, granate: 2, panzerfaust: 3, moerser: 2, mg: 2 },
-    { gewehr: 3, granate: 3, panzerfaust: 3, moerser: 3, mg: 3, haubitze: 1 },
+    { gewehr: 3, granate: 2, panzerfaust: 2, mistgabel: 1 },
+    { gewehr: 3, granate: 2, panzerfaust: 3, moerser: 2, mg: 2, mistgabel: 1 },
+    { gewehr: 3, granate: 3, panzerfaust: 3, moerser: 3, mg: 3, haubitze: 1, traktor: 1 },
   ],
   pionier: [
-    { gewehr: 2, granate: 3, mine: 2 },
-    { gewehr: 2, granate: 3, mine: 3, tnt: 2, splitter: 2 },
-    { gewehr: 3, granate: 3, mine: 3, tnt: 3, splitter: 3, flammen: 2 },
+    { gewehr: 2, granate: 3, mine: 2, mistgabel: 1 },
+    { gewehr: 2, granate: 3, mine: 3, tnt: 2, splitter: 2, traktor: 1 },
+    { gewehr: 3, granate: 3, mine: 3, tnt: 3, splitter: 3, flammen: 2, traktor: 2 },
   ],
   sani: [
-    { gewehr: 2, granate: 2, jause: 2, guelle: 1 },
-    { gewehr: 2, granate: 2, jause: 3, guelle: 2, lazarett: 1 },
-    { gewehr: 3, granate: 2, jause: 3, guelle: 3, lazarett: 2, splitter: 2 },
+    { gewehr: 2, granate: 2, jause: 2, guelle: 1, mistgabel: 1 },
+    { gewehr: 2, granate: 2, jause: 3, guelle: 2, lazarett: 1, wespen: 1 },
+    { gewehr: 3, granate: 2, jause: 3, guelle: 3, lazarett: 2, splitter: 2, wespen: 2 },
   ],
   jaeger: [
-    { flinte: 3, sniper: 1, granate: 2 },
-    { flinte: 3, sniper: 3, granate: 2, sprung: 2 },
-    { flinte: 3, sniper: 4, granate: 2, sprung: 3, mine: 2, jet: 1 },
+    { flinte: 3, sniper: 1, granate: 2, mistgabel: 2 },
+    { flinte: 3, sniper: 3, granate: 2, sprung: 2, mistgabel: 2, wespen: 1 },
+    { flinte: 3, sniper: 4, granate: 2, sprung: 3, mine: 2, jet: 1, mistgabel: 3, wespen: 1 },
   ],
-  held: { gewehr: 3, granate: 3, panzerfaust: 3, moerser: 2, mg: 2, sniper: 2, splitter: 2, jause: 2, sprung: 2, mine: 2 },
+  held: {
+    gewehr: 3, granate: 3, panzerfaust: 3, moerser: 2, mg: 2, sniper: 2, splitter: 2, jause: 2, sprung: 2, mine: 2,
+    mistgabel: 2, wespen: 1, traktor: 1,
+  },
   legende: {
     gewehr: 3, granate: 3, panzerfaust: 4, moerser: 3, mg: 2, sniper: 3, splitter: 2, jause: 2, sprung: 2, mine: 2,
-    heiligekuh: 1, haubitze: 1, jet: 1,
+    heiligekuh: 1, haubitze: 1, jet: 1, mistgabel: 2, wespen: 2, traktor: 2,
   },
 };
 
@@ -182,6 +199,7 @@ export function loadoutFor(s) {
 export const CRATE_WEAPONS = [
   ['granate', 2], ['panzerfaust', 1], ['moerser', 1], ['splitter', 1], ['sniper', 1], ['mine', 1],
   ['guelle', 1], ['sprung', 1], ['gewehr', 2], ['flammen', 1], ['jet', 1], ['heiligekuh', 1],
+  ['mistgabel', 2], ['wespen', 1], ['traktor', 1],
 ];
 
 // --- Fraktionen -------------------------------------------------------------
@@ -338,9 +356,12 @@ export const MISSIONS = [
 ];
 
 export const DIFFICULTY = {
-  easy: { name: 'Leicht', yaw: 5.5, pitch: 5, power: 0.09, think: 0.7, smart: 0.4 },
-  normal: { name: 'Normal', yaw: 2.2, pitch: 2.2, power: 0.035, think: 1, smart: 0.75 },
-  hard: { name: 'Schwer', yaw: 0.7, pitch: 0.7, power: 0.012, think: 1, smart: 1 },
+  // yaw/pitch: Streuung in Grad (Standardabweichung), power: Streuung der Kraft,
+  // blunder: Chance auf einen groben Patzer, windErr: wie falsch der Wind eingeschätzt wird,
+  // sloppy: Chance, ned die beste, sondern a schlechtere Idee zu nehmen
+  easy: { name: 'Leicht', yaw: 7, pitch: 6, power: 0.11, think: 0.7, smart: 0.4, blunder: 0.3, windErr: 0.6, sloppy: 0.4 },
+  normal: { name: 'Normal', yaw: 3.5, pitch: 3, power: 0.06, think: 1, smart: 0.75, blunder: 0.16, windErr: 0.35, sloppy: 0.2 },
+  hard: { name: 'Schwer', yaw: 1.6, pitch: 1.3, power: 0.028, think: 1, smart: 1, blunder: 0.07, windErr: 0.15, sloppy: 0.08 },
 };
 
 export const DEFAULT_SETTINGS = {

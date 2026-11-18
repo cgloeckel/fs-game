@@ -41,6 +41,11 @@ export const LINES = {
   steep: ['Z\'steil, Oida.', 'Do kum i ned auffi.', 'I bin a Kuh, ka Gams!'],
   tired: ['I kann nimma…', 'Puh, Pause.', 'Mei Haxn san aus Pudding.'],
   victory: ['Mia san die Kings vom Kuhstall!', 'Heit gibt\'s a Freibier!', 'Des wor a Watschnbaum!', 'Und jetzt a Jausn!'],
+  traktor: ['Da Traktor kennt ka Bremse!', 'Gas geben, Burschi!', 'Brumm-brumm-BUMM!', 'Der Diesel riecht nach Sieg!'],
+  wespen: ['Bsss! Holt\'s es eich!', 'Jetzt wird\'s stichig!', 'Schöne Grüße vom Bienenhaus!'],
+  stung: ['Au! Wespen! Hilfe!', 'Mei Nasn schwillt an!', 'Weg mit eich, es Viecher!', 'I bin allergisch, du Hirsch!'],
+  gabel: ['Ab aufn Misthaufen mit dir!', 'Drei Zinken, ka Gnade!'],
+  blunder: ['Hoppala, da Huf is abgrutscht!', 'Wer hat ma Butter auf die Hufe gschmiert?', 'Des wor jetzt nix.', 'I hob die Brilln im Stall vergessn.', 'Da Wind, i schwör, des wor da Wind!', 'Bitte ned filmen.'],
   dud: ['Da Abfangjäger hat Startverbot. Leider nix.', 'Da Pilot is im Krankenstand.', 'Ka Budget fürs Kerosin.'],
 };
 

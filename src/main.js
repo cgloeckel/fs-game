@@ -274,7 +274,7 @@ class App {
       teams.push({
         faction: FACTIONS[k * 2].id,
         control: (humans && k === 0) || this.params.get('human') === 'all' ? 'human' : 'cpu',
-        difficulty: 'hard',
+        difficulty: this.params.get('diff') || 'hard',
         soldiers: [0, 1, 2].map(() => soldierAtTier(rng, rng.int(0, 5), used)),
       });
     }

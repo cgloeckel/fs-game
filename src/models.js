@@ -499,6 +499,54 @@ export function itemGeometry(kind) {
         part(new THREE.SphereGeometry(0.06, 5, 4), { p: [-0.2, 0.15, 0.2] }, '#e53935'),
         part(new THREE.SphereGeometry(0.06, 5, 4), { p: [0.15, 0.16, 0.3] }, '#fdd835'),
       ]);
+    case 'gabel': {
+      const steel = '#9aa3a8';
+      const parts = [
+        part(new THREE.CylinderGeometry(0.03, 0.035, 1.25, 6), { p: [0, 0, -0.35], r: [PI / 2, 0, 0] }, '#8a5a32'),
+        part(new THREE.BoxGeometry(0.34, 0.04, 0.05), { p: [0, 0, 0.28] }, steel),
+      ];
+      for (const x of [-0.15, 0, 0.15]) {
+        parts.push(part(new THREE.CylinderGeometry(0.014, 0.014, 0.42, 5), { p: [x, 0, 0.5], r: [PI / 2, 0, 0] }, steel));
+        parts.push(part(new THREE.ConeGeometry(0.016, 0.08, 5), { p: [x, 0, 0.75], r: [PI / 2, 0, 0] }, '#dfe5e8'));
+      }
+      return merge(parts);
+    }
+    case 'nest':
+      return merge([
+        part(new THREE.SphereGeometry(0.22, 12, 10), { s: [1, 1.25, 1] }, (P, N, out) => {
+          out.copy(col('#c9b892')).multiplyScalar(0.8 + 0.2 * (Math.floor((P.y + 0.3) * 22) % 2));
+        }),
+        part(new THREE.CylinderGeometry(0.04, 0.05, 0.08, 6), { p: [0, 0.3, 0] }, '#5a4630'),
+        part(new THREE.SphereGeometry(0.06, 6, 5), { p: [0, -0.22, 0.05] }, '#2a2218'),
+      ]);
+    case 'traktor': {
+      const green = '#2e7d32', dark = '#1b1b1b', rim = '#d9b100';
+      const wheel = (x, y, z, r, w) => [
+        part(new THREE.CylinderGeometry(r, r, w, 16), { p: [x, y, z], r: [0, 0, PI / 2] }, dark),
+        part(new THREE.CylinderGeometry(r * 0.55, r * 0.55, w + 0.02, 10), { p: [x, y, z], r: [0, 0, PI / 2] }, rim),
+      ];
+      return merge([
+        part(new THREE.BoxGeometry(0.8, 0.62, 1.35), { p: [0, 0.78, 0.45] }, green),
+        part(new THREE.BoxGeometry(0.84, 0.08, 1.4), { p: [0, 1.11, 0.45] }, '#256628'),
+        part(new THREE.BoxGeometry(0.7, 0.4, 0.05), { p: [0, 0.78, 1.13] }, '#3a3a3a'),
+        part(new THREE.BoxGeometry(1.0, 0.45, 0.85), { p: [0, 0.85, -0.45] }, green),
+        part(new THREE.BoxGeometry(1.5, 0.08, 0.9), { p: [0, 1.15, -0.45] }, '#256628'),
+        part(new THREE.BoxGeometry(0.45, 0.12, 0.4), { p: [0, 1.25, -0.55] }, '#c62828'),
+        part(new THREE.BoxGeometry(0.45, 0.4, 0.08), { p: [0, 1.48, -0.76] }, '#c62828'),
+        part(new THREE.TorusGeometry(0.15, 0.025, 5, 12), { p: [0, 1.45, -0.18], r: [-0.9, 0, 0] }, dark),
+        part(new THREE.CylinderGeometry(0.045, 0.045, 0.75, 7), { p: [0.27, 1.45, 0.75] }, '#333333'),
+        part(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), { p: [-0.12, 1.25, 0.55], r: [0, 0, PI / 2] }, '#c62828'),
+        part(new THREE.CylinderGeometry(0.07, 0.07, 0.4, 8), { p: [-0.12, 1.25, 0.72], r: [0, 0, PI / 2] }, '#c62828'),
+        part(new THREE.CylinderGeometry(0.012, 0.012, 1.0, 4), { p: [-0.55, 1.65, -0.85] }, '#dddddd'),
+        part(new THREE.BoxGeometry(0.02, 0.1, 0.36), { p: [-0.55, 2.05, -0.67] }, '#d32f2f'),
+        part(new THREE.BoxGeometry(0.02, 0.1, 0.36), { p: [-0.55, 1.95, -0.67] }, '#ffffff'),
+        part(new THREE.BoxGeometry(0.02, 0.1, 0.36), { p: [-0.55, 1.85, -0.67] }, '#d32f2f'),
+        ...wheel(-0.68, 0.6, -0.45, 0.6, 0.34),
+        ...wheel(0.68, 0.6, -0.45, 0.6, 0.34),
+        ...wheel(-0.5, 0.34, 0.8, 0.34, 0.22),
+        ...wheel(0.5, 0.34, 0.8, 0.34, 0.22),
+      ]);
+    }
     case 'chute':
       return merge([
         part(new THREE.SphereGeometry(1.1, 12, 5, 0, PI * 2, 0, PI / 2.3), { p: [0, 2.2, 0], s: [1, 0.6, 1] }, (P, N, out) => {

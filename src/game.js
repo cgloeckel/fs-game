@@ -15,6 +15,11 @@ import { audio } from './audio.js';
 
 const V3 = THREE.Vector3;
 const NOOP_HUD = new Proxy({}, { get: () => () => {} });
+const DSTEP = 1 / 30;
+const SWARM_A = new THREE.Color('#1a1a1a');
+const SWARM_B = new THREE.Color('#f2c400');
+const SMOKE_D = new THREE.Color('#3a3a3a');
+const SMOKE_L = new THREE.Color('#9a9a9a');
 
 function gauss() {
   return (Math.random() + Math.random() + Math.random() - 1.5) / 1.5;
@@ -42,6 +47,9 @@ export class Game {
     this.crates = [];
     this.gases = [];
     this.planes = [];
+    this.swarms = [];
+    this.tractors = [];
+    this.stuck = [];
     this.units = [];
     this.teams = [];
     this.played = new Set();
@@ -552,7 +560,7 @@ export class Game {
       if (W.type === 'ballistic') u.aimPitch = clamp(Math.max(u.aimPitch, (W.minPitch || 30) * DEG), this.pitchMin(W), this.pitchMax(W));
       else u.aimPitch = clamp(u.aimPitch, this.pitchMin(W), this.pitchMax(W));
       if (W.type === 'hitscan' && Math.abs(u.aimPitch) > 0.5) u.aimPitch = 0.05;
-      if (['heal', 'place', 'melee'].includes(W.type)) u.aimPitch = 0;
+      if (['heal', 'place', 'melee', 'drive'].includes(W.type)) u.aimPitch = 0;
     }
     this.hud.phase(this);
   }
@@ -573,10 +581,10 @@ export class Game {
   }
 
   // Winkel, Kraft und (bei voller Zielhilfe) Windausgleich für Wurfwaffen
-  aimBallistic(u, W, t, full) {
+  aimBallistic(u, W, tp, full) {
     const id = this.weapon;
     const order = id === 'panzerfaust' ? [10, 18, 28, 40, 52] : W.minPitch ? [60, 50, 70, 45] : [45, 35, 55, 65, 25];
-    const baseYaw = Math.atan2(t.pos.x - u.pos.x, t.pos.z - u.pos.z);
+    const baseYaw = Math.atan2(tp.x - u.pos.x, tp.z - u.pos.z);
     let best = null;
     for (const deg of order) {
       if (W.minPitch !== undefined && deg < W.minPitch) continue;
@@ -584,12 +592,12 @@ export class Game {
       u.yaw = baseYaw;
       let res = null;
       for (let it = 0; it < (full ? 3 : 1); it++) {
-        res = this.solvePower(u, W, t.pos, full);
+        res = this.solvePower(u, W, tp, full);
         if (!res || !full) break;
         // seitliche Abdrift durch Wind ausgleichen
         const o = u.muzzle();
         const aI = Math.atan2(res.x - o.x, res.z - o.z);
-        const aT = Math.atan2(t.pos.x - o.x, t.pos.z - o.z);
+        const aT = Math.atan2(tp.x - o.x, tp.z - o.z);
         let d = aT - aI;
         while (d > Math.PI) d -= Math.PI * 2;
         while (d < -Math.PI) d += Math.PI * 2;
@@ -604,6 +612,16 @@ export class Game {
     u.aimPitch = best.pitch;
     u.yaw = best.yaw;
     return best;
+  }
+
+  // Maximale Wurfweite (45°, volle Kraft, ohne Wind) – für Hinweise
+  maxRange(u, W) {
+    const y0 = u.aimPitch;
+    u.aimPitch = clamp(45 * DEG, this.pitchMin(W), this.pitchMax(W));
+    const o = u.muzzle();
+    const r = simulate(W, o, u.aimDir().multiplyScalar(W.speed), this.envCalm, 8);
+    u.aimPitch = y0;
+    return Math.round(dist2D(o.x, o.z, r.x, r.z));
   }
 
   nextTarget() {
@@ -634,19 +652,39 @@ export class Game {
     } else if (W.type === 'ballistic') {
       const help = this.settings.aimHelp || 'full';
       if (help !== 'off') {
-        const r = this.aimBallistic(u, W, t, help === 'full');
-        if (r && r.err < W.radius * 1.5) {
+        // Wespen müssen ned direkt treffen – der Schwarm fliegt den Rest
+        let tp = t.pos.clone();
+        if (W.swarm) {
+          const dx = u.pos.x - t.pos.x, dz = u.pos.z - t.pos.z;
+          const l = Math.hypot(dx, dz) || 1;
+          const off = clamp(l - 6, 0, W.swarm.range * 0.6);
+          tp.x += (dx / l) * off;
+          tp.z += (dz / l) * off;
+          tp.y = this.terrain.heightAt(tp.x, tp.z);
+        }
+        const r = this.aimBallistic(u, W, tp, help === 'full');
+        const effR = W.swarm ? W.swarm.range * 0.5 : W.radius;
+        u.yaw = r ? u.yaw : Math.atan2(t.pos.x - u.pos.x, t.pos.z - u.pos.z);
+        if (r && r.err < effR * 1.5) {
           this.lastPower[this.weapon] = r.power;
           this.powerHint = { power: r.power, yaw: u.yaw, pitch: u.aimPitch };
           this.hud.toast(`Ziel: ${t.name} (${dist} m) – 🔥 antippen zum Feuern`);
         } else {
           if (r) this.lastPower[this.weapon] = r.power;
-          this.hud.toast(`${t.name} (${dist} m): mit ${W.name} schwer zu erwischen – probier a andere Waffe oder geh näher hin.`);
+          const mr = this.maxRange(u, W) + (W.swarm ? W.swarm.range : 0);
+          this.hud.toast(dist > mr - 2
+            ? `${t.name} is ${dist} m weg – ${W.name} schafft nur ca. ${mr} m. Geh näher hin!`
+            : `${t.name} (${dist} m): mit ${W.name} schwer zu erwischen – probier an anderen Winkel oder a andere Waffe.`);
         }
       } else {
         u.aimPitch = clamp(45 * DEG, this.pitchMin(W), this.pitchMax(W));
         this.hud.toast(`Ziel: ${t.name} (${dist} m)`);
       }
+    } else if (W.type === 'drive') {
+      const d = this.simulateDrive(u.pos, u.yaw, u);
+      const end = new V3(d.x, d.y + 0.9, d.z);
+      const ok = t.getCenter().distanceTo(end) < W.radius * 0.85 && d.type !== 'water';
+      this.hud.toast(`Ziel: ${t.name} (${dist} m)${ok ? ' – freie Fahrt!' : d.type === 'water' ? ' – der Traktor landet im Wasser!' : ' – da is was im Weg'}`);
     } else {
       this.hud.toast(`Ziel: ${t.name} (${dist} m)`);
     }
@@ -789,7 +827,7 @@ export class Game {
     this.phase = 'resolve';
     this.resolveT = 0;
     this.settleT = 0;
-    this.shot = { weapon: id, enemyDmg: 0, kills: 0, selfDmg: 0, offensive: !['heal', 'jump', 'place'].includes(W.type) };
+    this.shot = { weapon: id, enemyDmg: 0, kills: 0, selfDmg: 0, offensive: !['heal', 'jump', 'place'].includes(W.type), blunder: !!params.blunder };
     this.marker.visible = false;
     this.rangeRing.visible = false;
     this.overview = false;
@@ -807,6 +845,7 @@ export class Game {
       case 'heal': this.fireHeal(u, W); break;
       case 'strike': this.fireStrike(u, W, id, target); break;
       case 'jump': this.fireJump(u, W, target); break;
+      case 'drive': this.fireDrive(u, W); break;
       default: break;
     }
     return new Promise((res) => { this._resolveWaiter = res; });
@@ -1091,6 +1130,185 @@ export class Game {
   }
 
   // --- Treffer & Schaden -------------------------------------------------
+  // --- Mistgabel ------------------------------------------------------------
+  forkHit(p, r) {
+    const W = p.W;
+    if (r.type === 'unit') {
+      const t = r.unit;
+      const dir = p.vel.clone().setY(0).normalize();
+      t.impulse(dir.multiplyScalar(4).setY(3));
+      t.lastHitBy = p.owner;
+      t.lastHitTime = this.time;
+      this.damageUnit(t, W.dmg, p.owner, null, 'fork');
+      this.fx.stars(t.getHead());
+      this.sfx('hit');
+      this.sfx('moo', t.isStier ? 0.8 : 1.15, 0.45);
+    } else {
+      // bleibt im Boden (oder Baum) stecken
+      const m = new THREE.Mesh(itemGeometry('gabel'), materials().item);
+      m.position.copy(p.pos);
+      m.quaternion.copy(p.mesh.quaternion);
+      m.castShadow = true;
+      this.scene.add(m);
+      this.stuck.push({ mesh: m, t: 10 });
+      this.fx.impactDust(p.pos, this.terrain.colors.dirt);
+      this.sfx('thump');
+    }
+    this.lastEvent = { pos: p.pos.clone(), t: this.time };
+  }
+
+  // --- Wespenschwarm -----------------------------------------------------------
+  updateSwarms(dt) {
+    for (const sw of this.swarms) {
+      const S = sw.W.swarm;
+      sw.t += dt;
+      if (sw.hitT >= 0) {
+        sw.hitT += dt;
+        sw.pos.y += dt * 1.5;
+        if (sw.hitT > 1.1) sw.done = true;
+      } else {
+        if (!sw.target || !sw.target.alive) {
+          let best = null, bd = S.range * 1.3;
+          for (const u of this.units) {
+            if (!u.alive || (sw.owner && u.team === sw.owner.team)) continue;
+            const d = u.getCenter().distanceTo(sw.pos);
+            if (d < bd) { bd = d; best = u; }
+          }
+          sw.target = best;
+        }
+        if (sw.target) {
+          const c = sw.target.getCenter();
+          const to = c.clone().sub(sw.pos);
+          const d = to.length();
+          to.multiplyScalar(S.speed / Math.max(d, 0.001));
+          sw.vel.lerp(to, 1 - Math.exp(-dt * 3));
+          sw.pos.addScaledVector(sw.vel, dt);
+          const g = this.terrain.heightAt(sw.pos.x, sw.pos.z) + 0.6;
+          if (sw.pos.y < g) sw.pos.y = g;
+          if (d < 0.9) {
+            const t = sw.target;
+            this.damageUnit(t, S.dmg, sw.owner, null, 'sting');
+            t.squash = 1;
+            if (t.alive) this.say(t, 'stung', 0.9);
+            this.sfx('sting');
+            sw.hitT = 0;
+            this.lastEvent = { pos: c.clone(), t: this.time };
+          }
+        } else {
+          sw.pos.y += dt * 0.6;
+          if (sw.t > 2.5) sw.done = true;
+        }
+        if (sw.t > S.life) sw.done = true;
+      }
+      // Optik & Ton
+      const n = sw.hitT >= 0 ? 3 : 10;
+      for (let i = 0; i < n; i++) {
+        const c = Math.random() < 0.5 ? SWARM_A : SWARM_B;
+        this.fx.norm.spawn(sw.pos.x + (Math.random() - 0.5) * 1.2, sw.pos.y + (Math.random() - 0.5) * 0.9, sw.pos.z + (Math.random() - 0.5) * 1.2,
+          (Math.random() - 0.5) * 4, (Math.random() - 0.5) * 3, (Math.random() - 0.5) * 4, 0.3, 0.2, 0.15, c, c, 1, 0, 2);
+      }
+      this.sfx('buzz');
+    }
+    if (this.swarms.some((sw) => sw.done)) this.swarms = this.swarms.filter((sw) => !sw.done);
+  }
+
+  // --- Amok-Traktor ---------------------------------------------------------------
+  driveStep(s, W) {
+    const T = this.terrain;
+    const dt = DSTEP;
+    s.t += dt;
+    const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+    const step = W.speed * dt;
+    const nx = s.x + fx * step, nz = s.z + fz * step;
+    const nh = T.heightAt(nx, nz);
+    if (s.vy === 0 && (nh - s.y) / step > 1.3) return 'wall';
+    s.x = nx; s.z = nz;
+    if (nh < s.y - 0.3 || s.vy !== 0) {
+      s.vy -= GRAVITY * dt;
+      s.y += s.vy * dt;
+      if (s.y <= nh) { s.y = nh; s.vy = 0; }
+    } else {
+      s.y = nh;
+    }
+    if (s.y < T.waterLevel - 0.35) return 'water';
+    for (const u of this.units) {
+      if (!u.alive || (u === s.owner && s.t < 0.9)) continue;
+      if (dist2D(u.pos.x, u.pos.z, s.x, s.z) < 1.25 && Math.abs(u.pos.y - s.y) < 1.8) return 'unit';
+    }
+    for (const o of this.world.obstaclesNear(s.x, s.z)) {
+      if (!o.solid) continue;
+      if (dist2D(o.x, o.z, s.x, s.z) < o.r + 0.85 && s.y < o.top && s.y + 1.2 > o.y0) return 'prop';
+    }
+    if (s.t >= W.time) return 'time';
+    return null;
+  }
+
+  simulateDrive(from, yaw, owner, path = null) {
+    const W = WEAPONS.traktor;
+    const s = { x: from.x + Math.sin(yaw) * 1.4, y: 0, z: from.z + Math.cos(yaw) * 1.4, yaw, t: 0, vy: 0, owner };
+    s.y = this.terrain.heightAt(s.x, s.z);
+    for (let i = 0; i < 400; i++) {
+      const r = this.driveStep(s, W);
+      if (path && i % 4 === 0) path.push(s.x, s.y + 0.35, s.z);
+      if (r) return { x: s.x, y: s.y, z: s.z, type: r };
+    }
+    return { x: s.x, y: s.y, z: s.z, type: 'time' };
+  }
+
+  fireDrive(u, W) {
+    const s = { x: u.pos.x + Math.sin(u.yaw) * 1.4, y: 0, z: u.pos.z + Math.cos(u.yaw) * 1.4, yaw: u.yaw, t: 0, vy: 0, owner: u };
+    s.y = this.terrain.heightAt(s.x, s.z);
+    const mesh = new THREE.Mesh(itemGeometry('traktor'), materials().item);
+    mesh.castShadow = true;
+    this.scene.add(mesh);
+    this.tractors.push({ s, W, mesh, acc: 0, pos: new V3(s.x, s.y + 1, s.z), vel: new V3(), smokeT: 0 });
+    u.lunge = 0.5;
+    this.say(u, 'traktor', 0.8);
+    this.sfx('engine');
+  }
+
+  updateTractors(dt) {
+    for (const tr of this.tractors) {
+      const s = tr.s;
+      tr.acc += dt;
+      let res = null;
+      while (tr.acc >= DSTEP && !res) {
+        tr.acc -= DSTEP;
+        res = this.driveStep(s, tr.W);
+      }
+      const T = this.terrain;
+      const fx = Math.sin(s.yaw), fz = Math.cos(s.yaw);
+      const hA = T.heightAt(s.x + fx, s.z + fz), hB = T.heightAt(s.x - fx, s.z - fz);
+      tr.mesh.position.set(s.x, s.y, s.z);
+      tr.mesh.rotation.set(-Math.atan2(hA - hB, 2) + Math.sin(this.time * 30) * 0.015, s.yaw, Math.sin(this.time * 23) * 0.02, 'YXZ');
+      tr.pos.set(s.x, s.y + 1, s.z);
+      tr.vel.set(fx * tr.W.speed, 0, fz * tr.W.speed);
+      tr.smokeT -= dt;
+      if (tr.smokeT <= 0) {
+        tr.smokeT = 0.07;
+        const ex = new V3(0.27, 1.85, 0.75).applyEuler(tr.mesh.rotation).add(tr.mesh.position);
+        this.fx.norm.spawn(ex.x, ex.y, ex.z, (Math.random() - 0.5) * 0.4, 1.2, (Math.random() - 0.5) * 0.4, 1.0, 0.15, 0.7, SMOKE_D, SMOKE_L, 0.7, -0.3, 1);
+        this.fx.impactDust(new V3(s.x - fx * 0.6, s.y, s.z - fz * 0.6), this.terrain.colors.dirt);
+      }
+      this.sfx('engine');
+      if (res) {
+        tr.done = true;
+        this.scene.remove(tr.mesh);
+        tr.mesh.geometry.dispose();
+        if (res === 'water') {
+          this.fx.splash(new V3(s.x, T.waterLevel, s.z), 2);
+          this.sfx('splash');
+          if (!this.demo) this.hud.toast('Da Traktor geht baden. Blubb.');
+          this.lastEvent = { pos: new V3(s.x, T.waterLevel, s.z), t: this.time };
+        } else {
+          this.explode(new V3(s.x, s.y + 0.8, s.z), tr.W.radius, tr.W.dmg, s.owner);
+          this.fx.spawnDebris(s.x, s.y + 0.5, s.z, new THREE.Color('#2e7d32'), 10, 9);
+        }
+      }
+    }
+    if (this.tractors.some((t) => t.done)) this.tractors = this.tractors.filter((t) => !t.done);
+  }
+
   onProjectileHit(p, r) {
     const W = p.W;
     const pos = p.pos.clone();
@@ -1099,6 +1317,16 @@ export class Game {
       this.fx.splash(new V3(pos.x, this.terrain.waterLevel, pos.z), W.radius > 5 ? 2 : 1);
       this.sfx('splash');
       this.lastEvent = { pos: new V3(pos.x, this.terrain.waterLevel, pos.z), t: this.time };
+      return;
+    }
+    if (W.pierce) { this.forkHit(p, r); return; }
+    if (W.swarm) {
+      this.fx.impactDust(pos, new THREE.Color('#c9b892'));
+      this.fx.spawnDebris(pos.x, pos.y, pos.z, new THREE.Color('#c9b892'), 6, 3);
+      if (r.type === 'unit') this.damageUnit(r.unit, W.dmg, p.owner, null, 'shot');
+      this.swarms.push({ pos: pos.clone().setY(pos.y + 0.8), vel: new V3(0, 1, 0), t: 0, W, owner: p.owner, target: null, hitT: -1 });
+      this.sfx('buzz');
+      this.lastEvent = { pos: pos.clone(), t: this.time };
       return;
     }
     if (W.gas) {
@@ -1519,10 +1747,17 @@ export class Game {
       }
     }
     if (this.planes.some((p) => p.done)) this.planes = this.planes.filter((p) => !p.done);
+    this.updateSwarms(dt);
+    this.updateTractors(dt);
+    for (const st of this.stuck) {
+      st.t -= dt;
+      if (st.t <= 0) { this.scene.remove(st.mesh); st.mesh.geometry.dispose(); st.done = true; }
+    }
+    if (this.stuck.some((x) => x.done)) this.stuck = this.stuck.filter((x) => !x.done);
   }
 
   isSettled() {
-    if (this.projectiles.length || this.tnts.length || this.planes.length || this.busy > 0 || this.waterAnim) return false;
+    if (this.projectiles.length || this.tnts.length || this.planes.length || this.swarms.length || this.tractors.length || this.busy > 0 || this.waterAnim) return false;
     if (this.mines.some((m) => m.trig > 0)) return false;
     for (const u of this.units) {
       if (u.alive) {
@@ -1566,7 +1801,7 @@ export class Game {
       else if (sh.kills === 2) this.hud.announce(pick(ANNOUNCE.doubleKill), '', 1.6);
       else if (sh.enemyDmg >= 70) this.hud.announce(pick(ANNOUNCE.bigDamage), `${sh.enemyDmg} Schaden`, 1.3);
     }
-    if (sh.offensive && sh.enemyDmg === 0 && u && u.alive && !sh.selfDmg) this.say(u, 'miss', 0.55);
+    if (sh.offensive && sh.enemyDmg === 0 && u && u.alive && !sh.selfDmg) this.say(u, sh.blunder ? 'blunder' : 'miss', sh.blunder ? 0.95 : 0.55);
     if (this.checkVictory()) return;
     if (this.team && !this.team.human) {
       this.phase = 'ai';
@@ -1603,11 +1838,13 @@ export class Game {
       }
     } else if (u && u.alive && u.aiming && (ph === 'aim' || ph === 'ai')) {
       const W = WEAPONS[this.weapon];
-      this.wantCam('aim', u, { ballistic: W.type === 'ballistic', sniper: !!W.zoom && ph === 'aim' });
+      this.wantCam('aim', u, { ballistic: W.type === 'ballistic' || W.type === 'drive', sniper: !!W.zoom && ph === 'aim' });
     } else if (ph === 'resolve' || ph === 'turnEnd' || ph === 'retreat') {
       const p = this.projectiles[0];
       const flyer = this.units.find((x) => x.alive && (!x.onGround || x.scripted) && x !== u);
       if (p) this.wantCam('track', p);
+      else if (this.tractors[0]) this.wantCam('track', this.tractors[0]);
+      else if (this.swarms[0]) this.wantCam('track', this.swarms[0]);
       else if (this.planes[0]) this.wantCam('track', { pos: this.planes[0].mesh.position });
       else if (this.lastEvent && this.time - this.lastEvent.t < 1.6) this.wantCam('point', this.lastEvent.pos, { dist: 17 });
       else if (flyer) this.wantCam('track', flyer);
@@ -1655,21 +1892,48 @@ export class Game {
         const p = new V3(r.x, water ? this.terrain.waterLevel : r.y, r.z);
         u.aimLandDist = dist2D(u.pos.x, u.pos.z, p.x, p.z);
         let enemy = null, friend = null, best = Infinity;
+        const rr = W.swarm ? W.swarm.range : W.radius;
         for (const t of this.units) {
           if (!t.alive) continue;
           const d = t.getCenter().distanceTo(p);
-          if (d < W.radius * 0.85) {
-            if (t.team !== u.team) { if (d < best) { best = d; enemy = t; } } else friend = t;
+          if (d < rr * 0.85) {
+            if (t.team !== u.team) { if (d < best) { best = d; enemy = t; } } else if (!W.swarm) friend = t;
           }
         }
         ringOn = true;
         this.impactRing.position.set(p.x, p.y + 0.15, p.z);
-        this.impactRing.scale.setScalar(W.radius * (1 + Math.sin(this.time * 8) * 0.04));
+        this.impactRing.scale.setScalar(rr * (1 + Math.sin(this.time * 8) * 0.04));
         this.impactRing.material.color.set(enemy ? '#ff2a2a' : friend ? '#ffd54f' : water ? '#8fd3ff' : '#ffffff');
-        this.aimInfo = { point: p, enemy, friend, water, dist: u.aimLandDist, ballistic: true };
+        this.aimInfo = { point: p, enemy, friend, water, dist: u.aimLandDist, ballistic: true, swarm: !!W.swarm };
       } else if (!full) {
         u.aimLandDist = clamp(W.speed * pw * 1.1, 6, 40);
       }
+    }
+    if (humanAim && W.type === 'drive') {
+      const path = [];
+      const d = this.simulateDrive(u.pos, u.yaw, u, path);
+      const n = Math.min(150, path.length / 3);
+      for (let i = 0; i < n * 3; i++) this.previewArr[i] = path[i];
+      shown = n;
+      this.previewGeo.attributes.position.needsUpdate = true;
+      const water = d.type === 'water';
+      const p = new V3(d.x, water ? this.terrain.waterLevel : d.y, d.z);
+      const c = new V3(d.x, d.y + 0.8, d.z);
+      u.aimLandDist = dist2D(u.pos.x, u.pos.z, p.x, p.z);
+      let enemy = null, friend = null;
+      if (!water) {
+        for (const t of this.units) {
+          if (!t.alive || t === u) continue;
+          if (t.getCenter().distanceTo(c) < W.radius * 0.85) { if (t.team !== u.team) enemy = enemy || t; else friend = t; }
+        }
+      }
+      if (help !== 'off') {
+        ringOn = true;
+        this.impactRing.position.set(p.x, p.y + 0.15, p.z);
+        this.impactRing.scale.setScalar(W.radius * (1 + Math.sin(this.time * 8) * 0.04));
+        this.impactRing.material.color.set(enemy ? '#ff2a2a' : friend ? '#ffd54f' : water ? '#8fd3ff' : '#ffffff');
+      }
+      this.aimInfo = { point: p, enemy, friend, water, dist: u.aimLandDist, ballistic: true };
     }
     this.impactRing.visible = ringOn;
     this.previewGeo.setDrawRange(0, shown);
@@ -1725,6 +1989,8 @@ export class Game {
     this.frameWaiters = [];
     for (const u of this.units) u.dispose();
     for (const p of this.projectiles) p.remove();
+    for (const t of this.tractors) t.mesh.geometry.dispose();
+    for (const st of this.stuck) st.mesh.geometry.dispose();
     this.world.dispose();
     this.scene.clear();
   }
