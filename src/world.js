@@ -30,6 +30,7 @@ export class World {
     this.setupLights();
     this.setupSky(opts.fog);
     this.setupWater();
+    this.setupSeabed();
     if (theme.mountains) this.setupMountains();
     this.setupClouds();
     const avoid = opts.planSpawns ? opts.planSpawns(this.terrain) : (opts.avoid || []);
@@ -163,6 +164,18 @@ export class World {
     this.water.renderOrder = 2;
     this.water.receiveShadow = this.quality === 'high';
     this.scene.add(this.water);
+  }
+
+  // Durchgehender Meeresboden, damit unter dem Wasser kein Quadrat endet
+  setupSeabed() {
+    const geo = new THREE.PlaneGeometry(1800, 1800, 1, 1);
+    geo.rotateX(-Math.PI / 2);
+    const c = new THREE.Color(this.theme.colors.seabed);
+    const mat = new THREE.MeshLambertMaterial({ color: c });
+    this.seabed = new THREE.Mesh(geo, mat);
+    this.seabed.position.y = -5.05;
+    this.seabed.receiveShadow = false;
+    this.scene.add(this.seabed);
   }
 
   setWaterLevel(y) {

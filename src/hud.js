@@ -29,6 +29,7 @@ export class HUD {
           <button class="hbtn" data-cmd="pause" title="Pause (P)">⏸</button>
         </div>
       </div>
+      <div class="scope"></div>
       <div class="labels"></div>
       <div class="xhair"><i></i><span></span></div>
       <div class="unitcard">
@@ -292,8 +293,9 @@ export class HUD {
     const w = this.app.width, h = this.app.height;
     const u = game.unit;
     // Namensschilder
+    this.root.classList.toggle('scoped', !!game.scoped);
     for (const [unit, tag] of this.tags) {
-      if (!unit.alive && unit.deathT > 1.2) {
+      if ((!unit.alive && unit.deathT > 1.2) || (game.scoped && unit === u)) {
         if (tag.style.display !== 'none') tag.style.display = 'none';
         continue;
       }

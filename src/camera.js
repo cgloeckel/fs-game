@@ -64,6 +64,7 @@ export class CameraRig {
     const o = this.obj;
     let wantYaw = null;
     let snap = 6;
+    let instant = false;
     switch (this.mode) {
       case 'follow': {
         if (o) {
@@ -83,11 +84,13 @@ export class CameraRig {
           wantYaw = o.yaw + Math.PI;
           snap = 10;
           if (this.opts && this.opts.sniper) {
-            // Zielfernrohr: direkt aus dem Kopf
-            this.goal.set(o.pos.x + fx * 0.5, o.pos.y + 1.85, o.pos.z + fz * 0.5);
-            this.goalDist = 0.6;
+            // Zielfernrohr: Kamera sitzt genau im Schussursprung -> Bildmitte = Treffpunkt
+            const m = o.muzzle(this._m || (this._m = new THREE.Vector3()));
+            this.goal.set(m.x + fx * cp * 10, m.y + sp * 10, m.z + fz * cp * 10);
+            this.goalDist = 10;
             this.goalPitch = -ap;
             this.goalFov = 24;
+            instant = true;
           } else if (this.opts && this.opts.ballistic) {
             // Hoch hinter dem Schützen, Blick auf die Strecke bis zum Einschlag
             const land = clamp(o.aimLandDist || 14, 4, 50);
@@ -100,8 +103,8 @@ export class CameraRig {
           } else {
             // Direkt hinter dem Schützen, Blick entlang der Schusslinie
             const L = 10;
-            const mx = o.pos.x + fx * 0.75 * cp, my = o.pos.y + 1.3 + 0.75 * sp, mz = o.pos.z + fz * 0.75 * cp;
-            this.goal.set(mx + fx * cp * L, my + sp * L, mz + fz * cp * L);
+            const m = o.muzzle(this._m || (this._m = new THREE.Vector3()));
+            this.goal.set(m.x + fx * cp * L, m.y + sp * L, m.z + fz * cp * L);
             this.goalDist = (L + 4.5) * Math.sqrt(this.manualZoom);
             this.goalPitch = clamp(0.2 - ap, -1.2, 1.3);
             this.goalFov = 52;
@@ -146,6 +149,14 @@ export class CameraRig {
       default:
         break;
     }
+    if (instant) {
+      // ohne Verzögerung, damit das Fernrohr exakt mitgeht
+      this.yaw = wantYaw;
+      this.target.copy(this.goal);
+      this.dist = this.goalDist;
+      this.pitch = this.goalPitch;
+      wantYaw = null;
+    }
     if (wantYaw !== null) this.yaw += angleDiff(this.yaw, wantYaw) * (1 - Math.exp(-dt * (this.mode === 'aim' ? 12 : 2.5)));
     this.target.x = damp(this.target.x, this.goal.x, snap, dt);
     this.target.y = damp(this.target.y, this.goal.y, snap, dt);
@@ -164,7 +175,7 @@ export class CameraRig {
       this.target.y + sp * this.dist,
       this.target.z + Math.cos(this.yaw) * cp * this.dist,
     );
-    if (this.terrain) {
+    if (this.terrain && !instant) {
       const g = this.terrain.heightAt(p.x, p.z) + 0.8;
       const w = this.terrain.waterLevel + 0.6;
       const floor = Math.max(g, w);

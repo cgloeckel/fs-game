@@ -91,12 +91,14 @@ export class Game {
   }
 
   // --- Aufbau -------------------------------------------------------------
+  // Startplätze: alle Viecher werden über die ganze Insel verstreut (reihum je Team),
+  // mit Mindestabstand zu Gegnern und möglichst weit weg vom Ufer.
   planSpawns(T) {
     const rng = this.rng;
     const teams = this.opts.teams;
     const n = teams.length;
-    const base = rng.range(0, Math.PI * 2);
-    this.spawnSpots = [];
+    this.spawnSpots = teams.map(() => []);
+    const placed = [];
     const avoid = [];
     const anyLand = () => {
       for (let i = 0; i < 400; i++) {
@@ -105,36 +107,46 @@ export class Game {
       }
       return { x: 0, z: 0 };
     };
-    for (let k = 0; k < n; k++) {
-      const a = base + (k * Math.PI * 2) / n;
-      let center = null;
-      for (let tries = 0; tries < 120 && !center; tries++) {
-        const spreadA = 0.15 + tries * 0.01;
-        const aa = a + rng.range(-spreadA, spreadA);
-        const rad = rng.range(n > 2 ? 22 : 18, 34);
-        const x = Math.sin(aa) * rad, z = Math.cos(aa) * rad;
-        if (T.heightAt(x, z) > T.waterLevel + 1.2 && T.slopeAt(x, z) < 0.45) center = { x, z };
-      }
-      if (!center) center = anyLand();
-      const spots = [];
-      const count = teams[k].soldiers.length;
-      for (let i = 0; i < count; i++) {
-        let s = null;
-        for (let tries = 0; tries < 300 && !s; tries++) {
-          const spread = 4 + tries * 0.05;
-          const x = center.x + rng.range(-spread, spread), z = center.z + rng.range(-spread, spread);
-          const h = T.heightAt(x, z);
-          if (h < T.waterLevel + 0.9) continue;
-          if (T.slopeAt(x, z) > 0.55 + tries * 0.003) continue;
-          if (spots.some((p) => dist2D(p.x, p.z, x, z) < 2.4)) continue;
-          if (this.spawnSpots.some((tm) => tm.some((p) => dist2D(p.x, p.z, x, z) < 11))) continue;
-          s = { x, z };
+    const nearWater = (x, z) => {
+      for (const r of [2.5, 5]) {
+        for (let a = 0; a < 8; a++) {
+          const ang = (a / 8) * Math.PI * 2;
+          if (T.heightAt(x + Math.sin(ang) * r, z + Math.cos(ang) * r) < T.waterLevel + 0.2) return true;
         }
-        if (!s) s = anyLand();
-        spots.push(s);
-        avoid.push({ x: s.x, z: s.z, r: 2.6 });
       }
-      this.spawnSpots.push(spots);
+      return false;
+    };
+    const maxU = Math.max(...teams.map((t) => t.soldiers.length));
+    const start = rng.int(0, n - 1);
+    const order = [];
+    for (let i = 0; i < maxU; i++) {
+      for (let j = 0; j < n; j++) {
+        const k = (start + j) % n;
+        if (i < teams[k].soldiers.length) order.push(k);
+      }
+    }
+    for (const k of order) {
+      let best = null, bestScore = -Infinity;
+      for (let c = 0; c < 90; c++) {
+        const x = rng.range(-T.half * 0.8, T.half * 0.8), z = rng.range(-T.half * 0.8, T.half * 0.8);
+        if (T.heightAt(x, z) < T.waterLevel + 0.9) continue;
+        if (T.slopeAt(x, z) > 0.5) continue;
+        let minAll = 40, minEnemy = 40, minFriend = 40;
+        for (const p of placed) {
+          const d = dist2D(p.x, p.z, x, z);
+          if (d < minAll) minAll = d;
+          if (p.team === k) { if (d < minFriend) minFriend = d; } else if (d < minEnemy) minEnemy = d;
+        }
+        let score = Math.min(minAll, 22) + rng.range(0, 6);
+        if (minEnemy < 10) score -= 60;
+        if (minFriend < 6) score -= 25;
+        if (nearWater(x, z)) score -= 12;
+        if (score > bestScore) { bestScore = score; best = { x, z }; }
+      }
+      if (!best) best = anyLand();
+      placed.push({ x: best.x, z: best.z, team: k });
+      this.spawnSpots[k].push(best);
+      avoid.push({ x: best.x, z: best.z, r: 2.6 });
     }
     return avoid;
   }
@@ -750,8 +762,9 @@ export class Game {
     const u = this.unit;
     if (this.humanTurn && this.phase === 'aim' && (pointerType !== 'mouse' || button === 0)) {
       const W = WEAPONS[this.weapon];
-      u.yaw -= dx * 0.0045 * sens;
-      u.aimPitch = clamp(u.aimPitch - dy * 0.0035 * sens, this.pitchMin(W), this.pitchMax(W));
+      const zk = this.cam.fov / 55; // im Fernrohr feiner
+      u.yaw -= dx * 0.0045 * sens * zk;
+      u.aimPitch = clamp(u.aimPitch - dy * 0.0035 * sens * zk, this.pitchMin(W), this.pitchMax(W));
       return;
     }
     if (this.cam.mode === 'overview') { this.cam.pan(dx, dy); return; }
@@ -1573,7 +1586,7 @@ export class Game {
       if (inp.y) this.walk(u, inp.y, dt);
     } else if (this.phase === 'aim') {
       const W = WEAPONS[this.weapon];
-      const fine = inp.fine ? 0.25 : 1;
+      const fine = (inp.fine ? 0.25 : 1) * (this.cam.fov / 55);
       // quadratische Kennlinie: kleine Ausschläge = feines Zielen
       if (inp.x) u.yaw -= inp.x * Math.abs(inp.x) * 1.1 * dt * fine;
       if (inp.y) u.aimPitch = clamp(u.aimPitch + inp.y * Math.abs(inp.y) * 0.7 * dt * fine, this.pitchMin(W), this.pitchMax(W));
@@ -1829,6 +1842,15 @@ export class Game {
     const c = this.cam;
     const u = this.unit;
     const ph = this.phase;
+    // Zielfernrohr: eigenes Viech ausblenden, damit nix die Sicht verdeckt
+    const Wc = this.weapon ? WEAPONS[this.weapon] : null;
+    const scoped = !!(u && u.alive && u.aiming && ph === 'aim' && Wc && Wc.zoom && this.team && this.team.human && !this.overview);
+    if (scoped !== this.scoped || (this.scopedUnit && this.scopedUnit !== u)) {
+      if (this.scopedUnit && this.scopedUnit.alive) this.scopedUnit.model.root.visible = true;
+      this.scoped = scoped;
+      this.scopedUnit = scoped ? u : null;
+      if (scoped) u.model.root.visible = false;
+    }
     if (ph === 'gameover' || ph === 'intro') {
       // Orbit bleibt
     } else if (this.overview || ph === 'target') {

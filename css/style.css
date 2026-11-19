@@ -90,6 +90,7 @@ body.portrait .rotate-hint {
 .menu { display: flex; flex-direction: column; gap: 10px; width: min(380px, 92vw); }
 .menu .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 .foot { color: rgba(255,255,255,.7); font-size: 11px; text-align: center; text-shadow: 0 1px 3px #000; margin-bottom: 4px; }
+.foot .ver { color: #fff; font-weight: 800; background: rgba(0,0,0,.35); padding: 2px 8px; border-radius: 8px; }
 
 .panel {
   pointer-events: auto; background: var(--panel); border: 2px solid var(--line); border-radius: 18px;
@@ -351,3 +352,13 @@ input[type=range] { width: 100%; accent-color: var(--gold); }
 @media (hover: hover) and (pointer: fine) {
   .actions { transform: scale(.85); transform-origin: right bottom; }
 }
+
+/* ---------- Zielfernrohr ---------- */
+.scope { position: absolute; inset: 0; display: none; pointer-events: none;
+  background: radial-gradient(circle at 50% 50%, rgba(0,0,0,0) 0, rgba(0,0,0,0) calc(min(42vh, 42vw) - 3px), rgba(10,10,10,.92) min(42vh, 42vw)); }
+.scope::before, .scope::after { content: ""; position: absolute; background: rgba(0,0,0,.55); }
+.scope::before { left: 50%; top: calc(50% - min(42vh, 42vw)); width: 2px; height: calc(2 * min(42vh, 42vw)); margin-left: -1px; }
+.scope::after { top: 50%; left: calc(50% - min(42vh, 42vw)); height: 2px; width: calc(2 * min(42vh, 42vw)); margin-top: -1px; }
+.hud.scoped .scope { display: block; }
+.hud.scoped .xhair::after { display: none; }
+.hud.scoped .bubble { display: none; }

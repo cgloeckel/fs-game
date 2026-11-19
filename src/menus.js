@@ -10,6 +10,7 @@ import { MEDALS, RESULT_TEXT, pick } from './text.js';
 import { RNG } from './rng.js';
 import { el, esc } from './util.js';
 import { audio } from './audio.js';
+import { VERSION, BUILD_DATE } from './version.js';
 
 const sexIcon = (s) => (s.sex === 'stier' ? '🐂' : '🐄');
 
@@ -71,7 +72,7 @@ export class Menus {
         </div>
         ${document.fullscreenEnabled ? '<button class="btn ghost" data-a="fs">⛶ Vollbild</button>' : ''}
       </div>
-      <div class="foot">Fan-Remaster eines rundenbasierten Artillerie-Klassikers · Eigene Figuren, eigener Schmäh · v1.0</div>
+      <div class="foot"><span class="ver">v${VERSION}${BUILD_DATE ? ` · Update vom ${BUILD_DATE}` : ''}</span> · Fan-Remaster eines rundenbasierten Artillerie-Klassikers · Eigene Figuren, eigener Schmäh</div>
     `);
     s.querySelector('[data-a="new"]').onclick = () => this.newCampaign();
     if (canContinue) s.querySelector('[data-a="continue"]').onclick = () => { this.app.campaign = c; this.barracks(); };

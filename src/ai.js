@@ -3,6 +3,7 @@ import * as THREE from 'three';
 import { WEAPONS, DIFFICULTY } from './config.js';
 import { simulate } from './projectile.js';
 import { clamp, dist2D, DEG, angleDiff } from './util.js';
+import { shotOrigin } from './unit.js';
 
 const V3 = THREE.Vector3;
 
@@ -17,11 +18,6 @@ function randn() {
 function aimDir(yaw, pitch, out = new V3()) {
   const cp = Math.cos(pitch);
   return out.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp);
-}
-
-function muzzleFrom(from, yaw, pitch, out = new V3()) {
-  const d = aimDir(yaw, pitch);
-  return out.set(from.x, from.y + 1.3, from.z).addScaledVector(d, 0.75);
 }
 
 export class AI {
@@ -139,9 +135,9 @@ export class AI {
     const g = this.game;
     const c = t.getCenter().clone();
     const yaw = Math.atan2(c.x - from.x, c.z - from.z);
-    const m0 = new V3(from.x, from.y + 1.3, from.z);
+    const m0 = shotOrigin(from, yaw, 0, W);
     const pitch = Math.atan2(c.y - m0.y, dist2D(m0.x, m0.z, c.x, c.z));
-    const m = muzzleFrom(from, yaw, pitch);
+    const m = shotOrigin(from, yaw, pitch, W);
     const dist = m.distanceTo(c);
     if (dist > W.range) return null;
     const dir = c.clone().sub(m).normalize();
@@ -199,7 +195,7 @@ export class AI {
     let best = null;
     const vel = new V3(), org = new V3();
     const test = (yw, pitch, power) => {
-      muzzleFrom(from, yw, pitch, org);
+      shotOrigin(from, yw, pitch, W, org);
       aimDir(yw, pitch, vel).multiplyScalar(W.speed * power);
       env.owner = u;
       const r = simulate(W, org, vel, env, 7);

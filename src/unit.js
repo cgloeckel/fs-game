@@ -7,6 +7,18 @@ import { hash2 } from './rng.js';
 
 let UID = 1;
 
+// Ursprung eines Schusses. Direktwaffen werden auf Augenhöhe angelegt,
+// das Zielfernrohr sitzt genau dort, wo auch die Kamera hinschaut.
+export function shotOrigin(pos, yaw, pitch, W, out = new THREE.Vector3()) {
+  const cp = Math.cos(pitch);
+  const dx = Math.sin(yaw) * cp, dy = Math.sin(pitch), dz = Math.cos(yaw) * cp;
+  let h = 1.3, f = 0.75;
+  if (W && W.type === 'hitscan') {
+    if (W.zoom) { h = 1.86; f = 0.55; } else { h = 1.62; f = 0.6; }
+  }
+  return out.set(pos.x + dx * f, pos.y + h + dy * f, pos.z + dz * f);
+}
+
 export class Unit {
   constructor(game, soldier, team) {
     this.uid = UID++;
@@ -74,12 +86,12 @@ export class Unit {
     return out.set(Math.sin(yaw) * cp, Math.sin(pitch), Math.cos(yaw) * cp);
   }
 
-  muzzle(out = new THREE.Vector3(), yaw = this.yaw, pitch = this.aimPitch) {
-    const d = this.aimDir(new THREE.Vector3(), yaw, pitch);
-    return out.set(this.pos.x, this.pos.y + 1.3, this.pos.z).addScaledVector(d, 0.75);
+  muzzle(out = new THREE.Vector3(), yaw = this.yaw, pitch = this.aimPitch, W = WEAPONS[this.weapon]) {
+    return shotOrigin(this.pos, yaw, pitch, W, out);
   }
 
   setHeld(id) {
+    if (id) this.weapon = id;
     const W = WEAPONS[id];
     const m = this.model;
     m.gun.visible = false; m.tube.visible = false; m.ball.visible = false;
