@@ -2,6 +2,13 @@
 
 Jedes Deployment erhöht die Patch-Version (1.0.4 → 1.0.5 …). Große Updates erhöhen die Minor-Version (1.1.0).
 
+## v1.0.5 – 19.11.2026
+- Desktop-Zielen wie am Handy: Maus wird beim Zielen eingefangen, Maus bewegen = zielen, Linksklick = Feuer, Mausrad = Kraft, Rechtsklick/Esc = zurück
+- Rechtsklick startet das Zielen, Tastenkürzel als Badges an den Buttons
+- Rindsviecher mit eigener Stimme: Muh, Doppel-Muh, langes Muh, Brummeln, Schnauben, Brüllen, Aua, Stöhnen, Gurgeln, Jubel – nie zweimal derselbe Laut hintereinander
+- Jede Fraktion hat ihren eigenen Kuhglocken-Ton, Alm-Echo auf Berg-Karten
+- Browser laden nach einem Update sicher die neue Version (Cache-Busting)
+
 ## v1.0.4 – 19.11.2026
 - Scharfschützengewehr: Zielfernrohr sitzt exakt im Schussursprung, Bildmitte = Treffpunkt, eigenes Viech wird ausgeblendet
 - Fernrohr-Overlay und feinere Steuerung im Zoom

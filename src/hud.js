@@ -41,14 +41,14 @@ export class HUD {
       <div class="joy"><div class="joy-knob"></div></div>
       <div class="keyhints"></div>
       <div class="actions">
-        <button class="abtn weapon" data-cmd="weaponMenu"><b class="w-icon">🔫</b><span class="w-name"></span><small class="w-ammo"></small></button>
-        <button class="abtn sm" data-cmd="switch">⇄<span>Wechseln</span></button>
-        <button class="abtn sm" data-cmd="jump">⤴<span>Hupfen</span></button>
-        <button class="abtn sm" data-cmd="endTurn">⏭<span>Ende</span></button>
-        <button class="abtn sm" data-cmd="nextTarget">⌖<span>Ziel</span></button>
-        <button class="abtn sm" data-cmd="back">✖<span>Zurück</span></button>
-        <button class="abtn big" data-cmd="aim">🎯<span>Zielen</span></button>
-        <button class="abtn big fire" data-cmd="fire">🔥<span>Feuer</span></button>
+        <button class="abtn weapon" data-cmd="weaponMenu" data-key="Q"><b class="w-icon">🔫</b><span class="w-name"></span><small class="w-ammo"></small></button>
+        <button class="abtn sm" data-cmd="switch" data-key="Tab">⇄<span>Wechseln</span></button>
+        <button class="abtn sm" data-cmd="jump" data-key="Leer">⤴<span>Hupfen</span></button>
+        <button class="abtn sm" data-cmd="endTurn" data-key="X">⏭<span>Ende</span></button>
+        <button class="abtn sm" data-cmd="nextTarget" data-key="E">⌖<span>Ziel</span></button>
+        <button class="abtn sm" data-cmd="back" data-key="R-Klick">✖<span>Zurück</span></button>
+        <button class="abtn big" data-cmd="aim" data-key="F">🎯<span>Zielen</span></button>
+        <button class="abtn big fire" data-cmd="fire" data-key="Klick">🔥<span>Feuer</span></button>
       </div>
       <div class="power"><i></i><b class="tick"></b></div>
       <div class="aiminfo"></div>
@@ -199,10 +199,14 @@ export class HUD {
     const ph = game.phase;
     const human = game.team && game.team.human;
     let t = '';
-    if (human && ph === 'move') t = '<b>W/S</b> gehen · <b>A/D</b> drehen · <b>Leertaste</b> hupfen · <b>F</b> zielen · <b>Q</b> Waffen · <b>Tab</b> wechseln · <b>M</b> Karte · <b>X</b> Zug beenden · Maus ziehen = Kamera';
+    if (human && ph === 'move') t = '<b>W/S</b> gehen · <b>A/D</b> drehen · <b>Leertaste</b> hupfen · <b>F</b> oder <b>Rechtsklick</b> zielen · <b>Q</b> Waffen · <b>Tab</b> wechseln · <b>M</b> Karte · <b>X</b> Zug beenden · Maus ziehen = Kamera';
     else if (human && ph === 'aim') {
       const W = WEAPONS[game.weapon];
-      t = `<b>A/D</b> drehen · <b>W/S</b> Winkel · ${W.type === 'ballistic' ? '<b>Enter</b> Feuer (Kreis = Einschlag) · <b>Leertaste halten</b> = Kraft selbst laden' : '<b>Leertaste</b> Feuer'} · <b>E</b> nächstes Ziel · <b>Shift</b> fein · <b>Esc</b> zurück · Maus ziehen = zielen`;
+      const locked = this.app.input.locked;
+      const mouse = locked ? '<b>Maus</b> zielen · ' : '<b>Klick ins Bild</b> = Maus fangen · ';
+      t = W.type === 'ballistic'
+        ? `${mouse}<b>Linksklick</b> Feuer (Kreis = Einschlag) · <b>halten</b> = Kraft selbst laden · <b>Mausrad</b> Kraft · <b>E</b> nächstes Ziel · <b>Shift</b> fein · <b>Rechtsklick/Esc</b> zurück`
+        : `${mouse}<b>Linksklick</b> Feuer · <b>E</b> nächstes Ziel · <b>Shift</b> fein · <b>Rechtsklick/Esc</b> zurück · <b>A/D W/S</b> geht a`;
     } else if (human && ph === 'target') t = '<b>Klick</b> aufs Ziel · nochmal klicken oder <b>Leertaste</b> = Feuer · Maus ziehen = Karte schieben · <b>Esc</b> zurück';
     else if (human && ph === 'retreat') t = '<b>W/A/S/D</b> davonlaufen! · <b>Leertaste</b> hupfen';
     kh.innerHTML = t;
@@ -239,6 +243,8 @@ export class HUD {
   }
 
   closeWeaponMenu() { this.$('.wmenu').classList.add('hidden'); }
+
+  get weaponMenuOpen() { return !this.$('.wmenu').classList.contains('hidden'); }
 
   announce(title, sub = '', dur = 1.6) {
     const a = this.$('.announce');
@@ -419,7 +425,9 @@ export class HUD {
     if (u && u.aiming && (game.phase === 'aim' || game.phase === 'ai')) {
       const W = WEAPONS[game.weapon];
       const deg = Math.round((u.aimPitch * 180) / Math.PI);
-      ai.textContent = W.type === 'ballistic' ? `Winkel ${deg}°${game.charging ? ` · Kraft ${Math.round(game.power * 100)}%` : ''}` : `${W.name} · ${deg}°`;
+      ai.textContent = W.type === 'ballistic'
+        ? `Winkel ${deg}° · Kraft ${Math.round((game.charging ? game.power : (game.presetPower ? game.presetPower() : 0)) * 100)}%`
+        : `${W.name} · ${deg}°`;
       ai.classList.add('show');
     } else ai.classList.remove('show');
     if (this.annT > 0) {
@@ -430,6 +438,8 @@ export class HUD {
       this.toastT -= dt;
       if (this.toastT <= 0) this.$('.toast').classList.remove('show');
     }
+    const lk = `${game.phase}|${this.app.input.locked}`;
+    if (this.last.lock !== lk) { this.last.lock = lk; this.updateKeyHints(game); }
     if (game.unit && game.weapon && this.last.wb !== `${game.weapon}|${game.unit.ammo[game.weapon]}`) {
       this.last.wb = `${game.weapon}|${game.unit.ammo[game.weapon]}`;
       this.updateWeaponButton(game);
@@ -449,8 +459,8 @@ export class HUD {
         <li><b>⌖ Ziel:</b> dreht zum nächsten Gegner und stellt bei Granaten &amp; Co. gleich die passende Kraft ein.</li>
         <li><b>🔥 antippen</b> feuert mit der eingestellten Kraft (der Kreis zeigt den Einschlag). <b>🔥 halten</b> lädt die Kraft selbst auf – loslassen = Wurf.</li>` : `
         <li><b>W/S</b> gehen, <b>A/D</b> drehen, <b>Leertaste</b> hupfen, Maus ziehen = Kamera.</li>
-        <li><b>F</b> zielen, <b>Q</b> Waffenkammer, <b>1–9</b> Schnellwahl.</li>
-        <li>Beim Zielen: <b>A/D</b> drehen, <b>W/S</b> Winkel – oder einfach mit der Maus ziehen.</li>
+        <li><b>F</b> oder <b>Rechtsklick</b> zielen, <b>Q</b> Waffenkammer, <b>1–9</b> Schnellwahl.</li>
+        <li>Beim Zielen wird die Maus eingefangen: <b>Maus bewegen</b> = zielen, <b>Linksklick</b> = Feuer, <b>Mausrad</b> = Kraft, <b>Rechtsklick</b> oder <b>Esc</b> = zurück.</li>
         <li><b>E</b> dreht zum nächsten Gegner und stellt bei Granaten die passende Kraft ein, <b>M</b> zeigt die Karte.</li>
         <li><b>Enter</b> feuert mit der eingestellten Kraft (Kreis = Einschlag), <b>Leertaste halten</b> lädt die Kraft selbst auf.</li>`}
         <li>Das <b>Fadenkreuz</b> sitzt genau dort, wo der Schuss hingeht – <b style="color:#ff5a4a">rot</b> = Treffer. Bei Wurfwaffen zeigt der <b>Kreis</b> den Einschlag samt Wind.</li>

@@ -27,9 +27,11 @@ Ein Fan-Remaster im Geist der rundenbasierten Artillerie-Klassiker aus dem Jahr 
 | Gehen / Drehen | Joystick links | W/S, A/D |
 | Kamera | Wischen, zwei Finger zoomen | Maus ziehen, Mausrad |
 | Hupfen | ⤴ | Leertaste |
-| Zielen | 🎯, dann wischen | F, dann A/D + W/S oder Maus |
-| Kraft & Feuer | 🔥 halten, loslassen | Leertaste halten, loslassen |
+| Zielen | 🎯, dann wischen | F oder Rechtsklick, dann Maus bewegen (Maus wird eingefangen) |
+| Feuer | 🔥 antippen (halten = Kraft selbst laden) | Linksklick (halten = Kraft selbst laden) |
+| Kraft bei Wurfwaffen | ⌖ stellt sie ein | Mausrad oder E |
 | Nächstes Ziel | ⌖ | E |
+| Zurück | ✖ | Rechtsklick oder Esc |
 | Waffenkammer | Waffen-Button | Q oder 1–9 |
 | Einheit wechseln | ⇄ | Tab |
 | Karte | 🗺️ | M |

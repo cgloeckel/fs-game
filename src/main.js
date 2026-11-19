@@ -59,6 +59,7 @@ class App {
     this.perfFrames = 0;
     requestAnimationFrame((t) => this.loop(t));
     window.__rv = this;
+    window.__audio = audio;
 
     const auto = this.params.get('autotest');
     if (auto) this.startAutotest(auto);
@@ -123,10 +124,16 @@ class App {
     const inp = this.input;
     inp.on('drag', (dx, dy, button, type) => { if (this.game && !this.game.demo) this.game.onDrag(dx, dy, button, type); });
     inp.on('zoom', (f) => { if (this.game && !this.game.demo) this.game.cam.zoomInput(f); });
-    inp.on('tap', (nx, ny) => { if (this.game && !this.game.demo) this.game.onTap(nx, ny); });
+    inp.on('wheel', (dir, e) => { if (this.game && !this.game.demo) this.game.onWheel(dir, e); });
+    inp.on('look', (dx, dy) => { if (this.game && !this.game.demo && !this.game.paused) this.game.onLook(dx, dy); });
+    inp.on('lockbutton', (b, down) => { if (this.game && !this.game.demo && !this.game.paused) this.game.onLockButton(b, down); });
+    inp.on('lockchange', (on) => { if (this.game && !this.game.demo) this.game.onLockChange(on); });
+    inp.on('tap', (nx, ny, e) => { if (this.game && !this.game.demo) this.game.onTap(nx, ny, e); });
     inp.on('keydown', (code) => {
       const g = this.game;
       if (!g || g.demo) return;
+      // Esc, das gerade nur den Maus-Fang beendet hat, soll ned zusätzlich pausieren
+      if (code === 'Escape' && performance.now() - this.input.unlockTime < 450) return;
       if (code === 'KeyP' || (code === 'Escape' && !['aim', 'target'].includes(g.phase))) {
         if (g.paused) { if (!this.menus.root.querySelector('.pause')) return; this.menus.hide(); this.resume(); } else this.pause();
         return;
@@ -226,6 +233,7 @@ class App {
   pause() {
     if (!this.game || this.game.demo || this.game.paused || this.game.phase === 'gameover') return;
     this.game.paused = true;
+    this.input.exitLock();
     this.hud.closeWeaponMenu();
     this.menus.pause(this.game);
   }

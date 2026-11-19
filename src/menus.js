@@ -502,8 +502,8 @@ export class Menus {
         <h3>Steuerung am Computer</h3>
         <ul>
           <li><b>W/S</b> gehen · <b>A/D</b> drehen · <b>Leertaste</b> hupfen · Maus ziehen = Kamera · Mausrad = Zoom</li>
-          <li><b>F</b> zielen · <b>Q</b> Waffenkammer · <b>1–9</b> Waffe direkt · <b>Tab</b> Einheit wechseln (vor dem ersten Schritt)</li>
-          <li>Beim Zielen: <b>A/D</b> + <b>W/S</b> oder Maus ziehen · <b>Shift</b> = fein · <b>Leertaste halten</b> = Kraft · <b>E</b> nächstes Ziel</li>
+          <li><b>F</b> oder <b>Rechtsklick</b> zielen · <b>Q</b> Waffenkammer · <b>1–9</b> Waffe direkt · <b>Tab</b> Einheit wechseln (vor dem ersten Schritt)</li>
+          <li>Beim Zielen wird die Maus eingefangen: <b>Maus bewegen</b> = zielen · <b>Linksklick</b> = Feuer · <b>Mausrad</b> = Kraft · <b>Rechtsklick</b>/<b>Esc</b> = zurück · <b>E</b> nächstes Ziel · <b>Shift</b> = fein</li>
           <li><b>M</b> Karte · <b>X</b> Zug beenden · <b>P</b>/<b>Esc</b> Pause</li>
         </ul>
         <h3>Dienstgrade &amp; Beförderung</h3>

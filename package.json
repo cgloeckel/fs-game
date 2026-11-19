@@ -1,6 +1,6 @@
 {
   "name": "rindsviecher",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "private": true,
   "description": "Rindsviecher – rundenbasierte 3D-Artillerie-Taktik im Browser",
   "scripts": {

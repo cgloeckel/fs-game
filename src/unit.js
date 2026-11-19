@@ -58,6 +58,9 @@ export class Unit {
     this.center = new THREE.Vector3();
     this.headPos = new THREE.Vector3();
     this.weapon = this.defaultWeapon();
+    // Eigene Stimme: Tonhöhe und Klangfarbe bleiben pro Viech gleich
+    const h1 = hash2(soldier.id * 7 + 3, 11), h2 = hash2(soldier.id * 13 + 5, 29);
+    this.voice = { p: (this.isStier ? 0.7 : 1) * (0.86 + h1 * 0.3), k: 0.88 + h2 * 0.28, stier: this.isStier };
   }
 
   get isStier() { return this.s.sex === 'stier'; }

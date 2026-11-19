@@ -10,6 +10,28 @@ export class Input {
     this.listeners = {};
     this.pinchDist = 0;
     this.enabled = true;
+    // Maus "einfangen" (Pointer-Lock) für Desktop-Zielen wie in einem Shooter
+    this.locked = false;
+    this.unlockTime = 0;
+    this.canLock = !!canvas.requestPointerLock && window.matchMedia && window.matchMedia('(any-pointer: fine)').matches;
+    document.addEventListener('pointerlockchange', () => {
+      const was = this.locked;
+      this.locked = document.pointerLockElement === canvas;
+      if (was && !this.locked) this.unlockTime = performance.now();
+      if (was !== this.locked) this.emit('lockchange', this.locked);
+    });
+    document.addEventListener('pointerlockerror', () => this.emit('lockerror'));
+    document.addEventListener('mousemove', (e) => {
+      if (this.locked && (e.movementX || e.movementY)) this.emit('look', e.movementX, e.movementY);
+    });
+    document.addEventListener('mousedown', (e) => {
+      if (!this.locked) return;
+      e.preventDefault();
+      this.emit('lockbutton', e.button, true);
+    });
+    document.addEventListener('mouseup', (e) => {
+      if (this.locked) this.emit('lockbutton', e.button, false);
+    });
 
     window.addEventListener('keydown', (e) => {
       if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT')) return;
@@ -29,16 +51,32 @@ export class Input {
     window.addEventListener('pointercancel', (e) => this.onUp(e));
     canvas.addEventListener('wheel', (e) => {
       e.preventDefault();
-      this.emit('zoom', e.deltaY > 0 ? 1.1 : 0.9);
+      this.emit('wheel', e.deltaY > 0 ? 1 : -1, e);
     }, { passive: false });
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    document.addEventListener('contextmenu', (e) => { if (this.locked) e.preventDefault(); });
   }
 
   on(name, fn) { (this.listeners[name] = this.listeners[name] || []).push(fn); }
   off(name) { delete this.listeners[name]; }
   emit(name, ...args) { (this.listeners[name] || []).forEach((f) => f(...args)); }
 
+  requestLock() {
+    if (!this.canLock || this.locked) return;
+    try {
+      const p = this.canvas.requestPointerLock({ unadjustedMovement: true });
+      if (p && p.catch) p.catch(() => { try { this.canvas.requestPointerLock(); } catch (e) { /* egal */ } });
+    } catch (e) {
+      try { this.canvas.requestPointerLock(); } catch (e2) { /* egal */ }
+    }
+  }
+
+  exitLock() {
+    if (this.locked && document.exitPointerLock) document.exitPointerLock();
+  }
+
   onDown(e) {
+    if (this.locked) return;
     this.canvas.setPointerCapture && this.canvas.setPointerCapture(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY, sx: e.clientX, sy: e.clientY, t: performance.now(), button: e.button, moved: 0 });
     if (this.pointers.size === 2) {
@@ -49,6 +87,7 @@ export class Input {
   }
 
   onMove(e) {
+    if (this.locked) return;
     const p = this.pointers.get(e.pointerId);
     if (!p) return;
     const dx = e.clientX - p.x, dy = e.clientY - p.y;
@@ -65,6 +104,7 @@ export class Input {
   }
 
   onUp(e) {
+    if (this.locked) { this.pointers.clear(); return; }
     const p = this.pointers.get(e.pointerId);
     if (!p) return;
     this.pointers.delete(e.pointerId);

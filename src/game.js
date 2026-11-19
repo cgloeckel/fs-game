@@ -7,7 +7,7 @@ import { Unit } from './unit.js';
 import { Projectile, simulate } from './projectile.js';
 import { AI } from './ai.js';
 import { RNG } from './rng.js';
-import { THEMES, WEAPONS, STAMINA_PER_M, WALK_SPEED, CRATE_WEAPONS, factionById, GRAVITY } from './config.js';
+import { THEMES, WEAPONS, STAMINA_PER_M, WALK_SPEED, CRATE_WEAPONS, factionById, GRAVITY, FACTIONS } from './config.js';
 import { itemGeometry, materials } from './models.js';
 import { line, pick, ANNOUNCE } from './text.js';
 import { clamp, dist2D, DEG } from './util.js';
@@ -16,6 +16,8 @@ import { audio } from './audio.js';
 const V3 = THREE.Vector3;
 const NOOP_HUD = new Proxy({}, { get: () => () => {} });
 const DSTEP = 1 / 30;
+// Kuhglocken-Ton je Fraktion
+const TEAM_BELL = [1, 1.12, 0.89, 1.26, 0.84, 1.19, 0.94, 1.06, 0.79];
 const SWARM_A = new THREE.Color('#1a1a1a');
 const SWARM_B = new THREE.Color('#f2c400');
 const SMOKE_D = new THREE.Color('#3a3a3a');
@@ -87,6 +89,7 @@ export class Game {
     this.envCalm = { ...this.env, wind: { x: 0, z: 0 } };
     this.createTeams();
     this.createMarkers();
+    if (!this.demo) audio.setEcho(['alm', 'gletscher', 'steinbruch'].includes(opts.theme) ? 0.3 : 0.1);
     if (this.rules.mines) this.scatterMines(this.rules.mines);
   }
 
@@ -246,6 +249,12 @@ export class Game {
     audio[name](...args);
   }
 
+  // Rindsviech-Laut zum Anlass (eigene Stimme pro Viech)
+  vocal(u, event, chance = 1) {
+    if (!u || this.demo || Math.random() > chance) return;
+    audio.cattle(event, u.voice);
+  }
+
   say(u, cat, chance = 1) {
     if (!u || this.demo || Math.random() > chance) return;
     const l = cat === 'hit' && u.isStier && Math.random() < 0.4 ? line('hitStier') : line(cat);
@@ -305,11 +314,11 @@ export class Game {
     this.cam.userTime = 99;
     this.arrow.material.color.set(team.color);
     this.hud.turnStart(this, team, u);
-    this.sfx('turnStart');
+    this.sfx('turnStart', TEAM_BELL[Math.max(0, FACTIONS.indexOf(team.faction)) % TEAM_BELL.length]);
     this.after(0.5, () => {
       if (this.unit === u && u.alive) {
         this.say(u, 'select', 0.65);
-        this.sfx('moo', u.isStier ? 0.72 : 1.05, 0.3);
+        this.vocal(u, 'select');
       }
     });
     if (!team.human) {
@@ -363,6 +372,7 @@ export class Game {
     this.overview = false;
     this.hud.phase(this);
     this.hud.closeWeaponMenu();
+    if (this.unit && this.unit.alive) this.vocal(this.unit, 'turnEnd', 0.3);
     for (const m of this.mines) m.armed = true;
     for (const g of this.gases) {
       for (const u of this.units) {
@@ -413,7 +423,7 @@ export class Game {
       alive.forEach((u, i) => {
         u.cheer = 0.01;
         u.aiming = false;
-        if (i < 2) this.after(0.4 + i * 0.6, () => this.say(u, 'victory'));
+        if (i < 2) this.after(0.4 + i * 0.6, () => { this.say(u, 'victory'); this.vocal(u, 'triumph'); });
       });
       this.cam.setMode('orbit', alive[0] || { pos: new V3() }, { dist: 13, pitch: 0.28 });
       this.hud.announce(winner.human && this.teams.filter((t) => t.human).length === 1 ? 'Sieg!' : `${winner.short} gewinnt!`, winner.name, 3.5);
@@ -573,8 +583,60 @@ export class Game {
       else u.aimPitch = clamp(u.aimPitch, this.pitchMin(W), this.pitchMax(W));
       if (W.type === 'hitscan' && Math.abs(u.aimPitch) > 0.5) u.aimPitch = 0.05;
       if (['heal', 'place', 'melee', 'drive'].includes(W.type)) u.aimPitch = 0;
+      this.grabMouse();
     }
     this.hud.phase(this);
+  }
+
+  // --- Desktop: Maus einfangen und wie am Handy zielen -----------------------
+  grabMouse() {
+    const inp = this.app.input;
+    if (!inp.canLock || !this.humanTurn || this.phase !== 'aim') return;
+    inp.requestLock();
+    if (!this.mouseHintShown) {
+      this.mouseHintShown = true;
+      this.hud.toast('🖱️ Maus = zielen · Linksklick = Feuer · Mausrad = Kraft · Rechtsklick = zurück', 4);
+    }
+  }
+
+  wantsLock() {
+    return this.humanTurn && this.phase === 'aim' && !this.paused && !this.overview && !this.hud.weaponMenuOpen;
+  }
+
+  onLook(dx, dy) {
+    if (!this.humanTurn || this.phase !== 'aim') return;
+    const u = this.unit;
+    const W = WEAPONS[this.weapon];
+    const sens = (this.settings.camSens || 1) * (this.cam.fov / 55) * (this.app.input.keys.has('ShiftLeft') || this.app.input.keys.has('ShiftRight') ? 0.3 : 1);
+    u.yaw -= dx * 0.0024 * sens;
+    u.aimPitch = clamp(u.aimPitch - dy * 0.0021 * sens, this.pitchMin(W), this.pitchMax(W));
+  }
+
+  onLockButton(button, down) {
+    if (!this.humanTurn) return;
+    if (button === 0) this.cmd(down ? 'fireDown' : 'fireUp');
+    else if (button === 2 && down) this.cmd('back');
+    else if (button === 1 && down) this.cmd('nextTarget');
+  }
+
+  onLockChange(on) {
+    // Esc beendet den Maus-Fang im Browser -> zurück zum Gehen
+    if (!on && this.humanTurn && this.phase === 'aim' && !this.paused && !this.overview && !this.hud.weaponMenuOpen) {
+      if (this.charging) { this.charging = false; this.power = 0; }
+      this.cmd('back');
+    }
+  }
+
+  onWheel(dir, e) {
+    const W = this.weapon ? WEAPONS[this.weapon] : null;
+    // Beim Zielen mit Wurfwaffen stellt das Mausrad die Kraft ein (Kreis wandert mit)
+    if (this.humanTurn && this.phase === 'aim' && W && W.type === 'ballistic' && !this.charging) {
+      const fine = e && e.shiftKey ? 0.005 : 0.02;
+      this.lastPower[this.weapon] = clamp(this.presetPower() - dir * fine, 0.05, 1);
+      this.powerHint = null;
+      return;
+    }
+    this.cam.zoomInput(dir > 0 ? 1.1 : 0.9);
   }
 
   // Freie Schusslinie für Direktwaffen suchen (Körper, Kopf, Beine)
@@ -735,7 +797,11 @@ export class Game {
     return res;
   }
 
-  onTap(nx, ny) {
+  onTap(nx, ny, e) {
+    if (this.humanTurn && e && e.pointerType === 'mouse') {
+      if (this.phase === 'aim') { this.grabMouse(); return; }
+      if (this.phase === 'move' && e.button === 2) { this.cmd('aim'); return; }
+    }
     if (!this.humanTurn || this.phase !== 'target') return;
     const W = WEAPONS[this.weapon];
     const r = this.cam.screenRay(nx, ny);
@@ -994,7 +1060,7 @@ export class Game {
         this.fx.stars(t.getHead());
       }
       this.sfx(hitAny ? 'hit' : 'throwSnd');
-      if (hitAny) this.sfx('moo', u.isStier ? 0.7 : 1, 0.4);
+      if (hitAny) this.vocal(u, 'attack');
       this.after(0.45, () => { this.busy--; });
     });
   }
@@ -1155,7 +1221,7 @@ export class Game {
       this.damageUnit(t, W.dmg, p.owner, null, 'fork');
       this.fx.stars(t.getHead());
       this.sfx('hit');
-      this.sfx('moo', t.isStier ? 0.8 : 1.15, 0.45);
+      this.vocal(t, 'hurt');
     } else {
       // bleibt im Boden (oder Baum) stecken
       const m = new THREE.Mesh(itemGeometry('gabel'), materials().item);
@@ -1423,6 +1489,7 @@ export class Game {
     if (u.hp <= 0) {
       this.kill(u, src, kind);
     } else if (u.hp > 0) {
+      this.vocal(u, 'hurt', 0.45);
       if (src === u) this.say(u, 'selfHit', 0.8);
       else if (src && src.team === u.team) this.say(u, 'friendly', 0.8);
       else this.say(u, 'hit', 0.45);
@@ -1444,12 +1511,12 @@ export class Game {
     if (src && src.team !== u.team) {
       src.stats.kills++;
       if (this.shot && src === this.unit) this.shot.kills++;
-      if (src.alive) this.after(0.9, () => this.say(src, 'kill', 0.7));
+      if (src.alive) this.after(0.9, () => { this.say(src, 'kill', 0.7); this.vocal(src, 'triumph', 0.6); });
     } else if (src === u && !this.demo) {
       this.hud.announce(pick(ANNOUNCE.selfKill), u.name, 1.4);
     }
     this.say(u, kind === 'drown' ? 'drown' : 'death');
-    this.sfx('moo', u.isStier ? 0.55 : 0.75, 0.45);
+    this.vocal(u, kind === 'drown' ? 'drown' : 'death');
     this.hud.updateTeams(this);
     this.hud.unitDied(u);
     if (u === this.unit && ['move', 'aim', 'target', 'retreat'].includes(this.phase)) {
@@ -1571,6 +1638,7 @@ export class Game {
     this.updatePhase(dt);
     this.updateCamera(dt);
     this.updateMarkers(dt);
+    if (this.app.input.locked && !this.wantsLock()) this.app.input.exitLock();
     this.hud.frame(this, dt);
   }
 
