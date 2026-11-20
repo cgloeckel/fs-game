@@ -17,6 +17,10 @@ export function stepProjectile(s, W, env) {
   const dt = PSTEP;
   s.t += dt;
   s.bounced = false;
+  // Zünder IMMER zuerst prüfen – auch wenn die Granate irgendwo hängt
+  if (W.fuse && s.t >= W.fuse) return { type: 'fuse' };
+  // Notbremse: nix fliegt ewig
+  if (s.t > 14) return { type: W.fuse ? 'fuse' : 'gone' };
   if (s.rest) {
     s.y = env.terrain.heightAt(s.x, s.z) + 0.1;
     if (s.y < env.waterLevel) return { type: 'water' };
@@ -41,7 +45,14 @@ export function stepProjectile(s, W, env) {
         s.x = nx; s.y = ny; s.z = nz;
         return { type: 'unit', unit: u };
       }
-      s.vx *= -0.3; s.vz *= -0.3; s.vy = Math.abs(s.vy) * 0.3;
+      // vom Viech abprallen UND herunterrutschen, statt drauf liegen zu bleiben
+      const l = Math.hypot(dx, dz) || 1;
+      const ux = dx / l, uz = dz / l;
+      const push = Math.max(2.2, Math.hypot(s.vx, s.vz) * 0.4);
+      s.vx = ux * push; s.vz = uz * push;
+      s.vy = Math.max(Math.abs(s.vy) * 0.3, 1.2);
+      s.x = u.pos.x + ux * 0.65; s.z = u.pos.z + uz * 0.65;
+      s.rest = false;
       s.bounced = true;
       return null;
     }
@@ -64,6 +75,10 @@ export function stepProjectile(s, W, env) {
         s.vx = (s.vx - 2 * vn * ux) * 0.5;
         s.vz = (s.vz - 2 * vn * uz) * 0.5;
       }
+      // aus dem Stamm/Felsen herausschieben, damit nix drin stecken bleibt
+      s.x = o.x + ux * (o.pr + 0.05);
+      s.z = o.z + uz * (o.pr + 0.05);
+      if (Math.hypot(s.vx, s.vz) < 1) { s.vx = ux * 1.5; s.vz = uz * 1.5; }
       s.bounced = true;
       return null;
     }

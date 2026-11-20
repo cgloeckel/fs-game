@@ -503,7 +503,8 @@ export class Menus {
         <ul>
           <li><b>W/S</b> gehen · <b>A/D</b> drehen · <b>Leertaste</b> hupfen · Maus ziehen = Kamera · Mausrad = Zoom</li>
           <li><b>F</b> oder <b>Rechtsklick</b> zielen · <b>Q</b> Waffenkammer · <b>1–9</b> Waffe direkt · <b>Tab</b> Einheit wechseln (vor dem ersten Schritt)</li>
-          <li>Beim Zielen wird die Maus eingefangen: <b>Maus bewegen</b> = zielen · <b>Linksklick</b> = Feuer · <b>Mausrad</b> = Kraft · <b>Rechtsklick</b>/<b>Esc</b> = zurück · <b>E</b> nächstes Ziel · <b>Shift</b> = fein</li>
+          <li>Gewehre &amp; Pistole: Die Maus wird eingefangen – <b>Maus bewegen</b> = zielen · <b>Linksklick</b> = Feuer · <b>Rechtsklick</b>/<b>Esc</b> = zurück · <b>E</b> nächstes Ziel · <b>Shift</b> = fein</li>
+          <li>Granate, Panzerfaust, Mörser &amp; Co.: <b>Maus aufs Ziel zeigen</b>, <b>Klick</b> = Wurf – Winkel, Kraft und Wind rechnet das Spiel · <b>W/S</b> Bogen hoch/flach · <b>Mausrad</b> Zoom · <b>A/D</b> Ansicht drehen</li>
           <li><b>M</b> Karte · <b>X</b> Zug beenden · <b>P</b>/<b>Esc</b> Pause</li>
         </ul>
         <h3>Dienstgrade &amp; Beförderung</h3>

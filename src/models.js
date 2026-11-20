@@ -343,6 +343,8 @@ export function propGeometry(kind) {
         part(new THREE.BoxGeometry(0.08, 2.3, 0.1), { p: [0, 1.15, 3.06] }, '#7a5230'),
         part(new THREE.BoxGeometry(1.0, 0.7, 0.06), { p: [0, 4.0, 3.03] }, '#2a1c10'),
         part(new THREE.BoxGeometry(0.9, 0.5, 0.06), { p: [0, 3.95, 3.06] }, '#d9b75a'),
+        part(new THREE.BoxGeometry(0.5, 1.4, 0.5), { p: [1.05, 4.75, -1.6] }, '#8c8580'),
+        part(new THREE.BoxGeometry(0.6, 0.12, 0.6), { p: [1.05, 5.5, -1.6] }, '#6e6863'),
       ]);
     }
     case 'marterl':
@@ -384,6 +386,95 @@ export function propGeometry(kind) {
       return merge([0, 1, 2].map((i) => part(new THREE.ConeGeometry(0.05, 0.42, 3), {
         p: [Math.cos(i * 2.1) * 0.06, 0.2, Math.sin(i * 2.1) * 0.06], r: [Math.sin(i * 2.1) * 0.3, 0, -Math.cos(i * 2.1) * 0.3],
       }, (P, N, out) => out.setRGB(0.55 + P.y, 0.6 + P.y, 0.55 + P.y))));
+    case 'blume_weiss':
+    case 'blume_gelb':
+    case 'blume_rot':
+    case 'blume_lila':
+    case 'blume_blau': {
+      const petal = { blume_weiss: '#ffffff', blume_gelb: '#ffd93b', blume_rot: '#e53935', blume_lila: '#9c6ade', blume_blau: '#5aa0f0' }[kind];
+      const center = kind === 'blume_gelb' ? '#c06a10' : '#ffcf33';
+      const parts = [
+        part(new THREE.CylinderGeometry(0.012, 0.016, 0.42, 3, 1, true), { p: [0, 0.21, 0] }, '#3f6b25'),
+        part(new THREE.SphereGeometry(0.06, 4, 2), { p: [0.05, 0.1, 0], s: [1.6, 0.25, 0.7], r: [0, 0, -0.5] }, '#4f8a33'),
+        part(new THREE.SphereGeometry(0.05, 4, 2), { p: [-0.05, 0.16, 0.02], s: [1.5, 0.25, 0.7], r: [0, 2.2, 0.5] }, '#4f8a33'),
+        part(new THREE.SphereGeometry(0.04, 4, 2), { p: [0, 0.445, 0], s: [1, 0.7, 1] }, center),
+      ];
+      for (let i = 0; i < 6; i++) {
+        const a = (i / 6) * PI * 2;
+        parts.push(part(new THREE.SphereGeometry(0.05, 4, 2), { p: [Math.cos(a) * 0.065, 0.44, Math.sin(a) * 0.065], s: [1.35, 0.32, 0.75], r: [0, -a, 0.38] }, petal));
+      }
+      return merge(parts);
+    }
+    case 'sonnenblume': {
+      // Blütenkranz als Stern (vorne und hinten sichtbar)
+      const star = new THREE.Shape();
+      const pts = 28;
+      for (let i = 0; i < pts; i++) {
+        const a = (i / pts) * PI * 2;
+        const rr = i % 2 ? 0.17 : 0.31;
+        if (i === 0) star.moveTo(Math.cos(a) * rr, Math.sin(a) * rr); else star.lineTo(Math.cos(a) * rr, Math.sin(a) * rr);
+      }
+      const tilt = -0.3;
+      const headY = 1.78;
+      const front = new THREE.ShapeGeometry(star);
+      const back = new THREE.ShapeGeometry(star);
+      back.rotateY(PI);
+      const parts = [
+        part(new THREE.CylinderGeometry(0.03, 0.045, 1.7, 5, 1, true), { p: [0, 0.85, 0] }, '#5d8a2a'),
+        part(new THREE.SphereGeometry(0.16, 4, 2), { p: [0.15, 0.8, 0], s: [1.6, 0.2, 0.9], r: [0, 0, -0.4] }, '#4f7f25'),
+        part(new THREE.SphereGeometry(0.16, 4, 2), { p: [-0.14, 1.1, 0], s: [1.6, 0.2, 0.9], r: [0, 0, 0.4] }, '#4f7f25'),
+        part(new THREE.CylinderGeometry(0.14, 0.12, 0.07, 8), { p: [0, headY, 0.05], r: [PI / 2 + tilt, 0, 0] }, '#5a3612'),
+        part(front, { p: [0, headY, 0.075], r: [tilt, 0, 0] }, '#ffcc1a'),
+        part(back, { p: [0, headY, 0.025], r: [tilt, 0, 0] }, '#e0a810'),
+      ];
+      return merge(parts);
+    }
+    case 'heumandl':
+      return merge([
+        part(new THREE.CylinderGeometry(0.05, 0.06, 2.1, 5), { p: [0, 1.05, 0] }, '#6a4a2a'),
+        part(new THREE.ConeGeometry(0.62, 0.95, 9), { p: [0, 0.55, 0], jitter: 0.06, seed: 2 }, varied('#d9b75a', 0.25)),
+        part(new THREE.ConeGeometry(0.5, 0.75, 9), { p: [0, 1.15, 0], jitter: 0.05, seed: 3 }, varied('#e2c46a', 0.25)),
+        part(new THREE.ConeGeometry(0.3, 0.55, 8), { p: [0, 1.65, 0], jitter: 0.04, seed: 4 }, varied('#c9a84e', 0.25)),
+        part(new THREE.CylinderGeometry(0.02, 0.02, 0.9, 4), { p: [0, 1.25, 0], r: [0, 0, PI / 2] }, '#6a4a2a'),
+      ]);
+    case 'vogelscheuche':
+      return merge([
+        part(new THREE.CylinderGeometry(0.05, 0.06, 2.0, 5), { p: [0, 1.0, 0] }, '#6a4a2a'),
+        part(new THREE.CylinderGeometry(0.04, 0.04, 1.3, 5), { p: [0, 1.45, 0], r: [0, 0, PI / 2] }, '#6a4a2a'),
+        part(new THREE.BoxGeometry(0.55, 0.55, 0.3), { p: [0, 1.3, 0] }, (P, N, out) => out.copy(col((Math.floor((P.x + 1) * 9) + Math.floor((P.y + 1) * 9)) % 2 ? '#c62828' : '#7a1515'))),
+        part(new THREE.BoxGeometry(1.2, 0.18, 0.18), { p: [0, 1.48, 0] }, '#a52525'),
+        part(new THREE.BoxGeometry(0.45, 0.5, 0.25), { p: [0, 0.82, 0] }, '#2f4f8a'),
+        part(new THREE.SphereGeometry(0.2, 8, 6), { p: [0, 1.8, 0] }, '#d8c39a'),
+        part(new THREE.SphereGeometry(0.035, 5, 3), { p: [-0.07, 1.84, 0.17] }, '#1d1d1d'),
+        part(new THREE.SphereGeometry(0.035, 5, 3), { p: [0.07, 1.84, 0.17] }, '#1d1d1d'),
+        part(new THREE.BoxGeometry(0.12, 0.02, 0.02), { p: [0, 1.73, 0.19], r: [0, 0, 0.12] }, '#5a2a1a'),
+        part(new THREE.CylinderGeometry(0.34, 0.34, 0.03, 12), { p: [0, 1.95, 0] }, '#3a2f22'),
+        part(new THREE.CylinderGeometry(0.17, 0.2, 0.22, 10), { p: [0, 2.06, 0] }, '#3a2f22'),
+        part(new THREE.ConeGeometry(0.06, 0.25, 4), { p: [0.62, 1.42, 0], r: [0, 0, -PI / 2] }, '#e2c46a'),
+        part(new THREE.ConeGeometry(0.06, 0.25, 4), { p: [-0.62, 1.42, 0], r: [0, 0, PI / 2] }, '#e2c46a'),
+      ]);
+    case 'fass':
+      return merge([
+        part(new THREE.CylinderGeometry(0.42, 0.42, 1.0, 12), { p: [0, 0.42, 0], r: [0, 0, PI / 2], s: [1, 1, 1] }, (P, N, out) => {
+          out.copy(col('#7a4d28')).multiplyScalar(0.85 + 0.15 * (Math.floor(Math.atan2(P.y - 0.42, P.z) * 4) % 2));
+        }),
+        part(new THREE.TorusGeometry(0.43, 0.025, 4, 14), { p: [0.32, 0.42, 0], r: [0, PI / 2, 0] }, '#2b2b2b'),
+        part(new THREE.TorusGeometry(0.43, 0.025, 4, 14), { p: [-0.32, 0.42, 0], r: [0, PI / 2, 0] }, '#2b2b2b'),
+      ]);
+    case 'zaun':
+      return merge([
+        part(new THREE.BoxGeometry(0.1, 1.0, 0.1), { p: [-1, 0.45, 0] }, varied('#7a6248', 0.2, 1)),
+        part(new THREE.BoxGeometry(0.1, 1.0, 0.1), { p: [1, 0.45, 0] }, varied('#7a6248', 0.2, 2)),
+        part(new THREE.BoxGeometry(2.15, 0.07, 0.05), { p: [0, 0.5, 0], r: [0, 0, 0.03] }, '#8a7055'),
+        part(new THREE.BoxGeometry(2.15, 0.07, 0.05), { p: [0, 0.82, 0], r: [0, 0, -0.03] }, '#8a7055'),
+      ]);
+    case 'seerose':
+      return part(new THREE.CylinderGeometry(0.34, 0.34, 0.02, 10, 1, false, 0.4, PI * 2 - 0.4), {}, varied('#3f7f35', 0.25));
+    case 'seerosenbluete':
+      return merge([0, 1, 2, 3, 4, 5].map((i) => {
+        const a = (i / 6) * PI * 2;
+        return part(new THREE.ConeGeometry(0.05, 0.14, 4), { p: [Math.cos(a) * 0.05, 0.05, Math.sin(a) * 0.05], r: [Math.sin(a) * 0.6, 0, -Math.cos(a) * 0.6] }, '#ffffff');
+      }).concat([part(new THREE.SphereGeometry(0.03, 5, 3), { p: [0, 0.06, 0] }, '#ffd54f')]));
     case 'flower':
       return merge([
         part(new THREE.CylinderGeometry(0.01, 0.01, 0.3, 3), { p: [0, 0.15, 0] }, '#2f4f20'),
@@ -562,4 +653,129 @@ export function itemGeometry(kind) {
     default:
       return part(new THREE.SphereGeometry(0.1, 6, 4), {}, '#ff00ff');
   }
+}
+
+// --- Holzbrücke über den See ---------------------------------------------------
+export function bridgeGeometry(dk, deckY) {
+  const parts = [];
+  const n = Math.max(6, Math.round(dk.len / 0.45));
+  const ang = Math.atan2(dk.dx, dk.dz);
+  const at = (t, side) => {
+    const x = dk.ax + dk.dx * dk.len * t + -dk.dz * side;
+    const z = dk.az + dk.dz * dk.len * t + dk.dx * side;
+    return [x, deckY(t), z];
+  };
+  for (let i = 0; i < n; i++) {
+    const t0 = i / n, t1 = (i + 1) / n, tm = (t0 + t1) / 2;
+    const [x, y, z] = at(tm, 0);
+    const slope = Math.atan2(deckY(t1) - deckY(t0), dk.len / n);
+    parts.push(part(new THREE.BoxGeometry(dk.hw * 2.1, 0.09, dk.len / n * 0.92), { p: [x, y - 0.05, z], r: [-slope, ang, 0], order: 'YXZ' },
+      (P, N, out) => out.copy(col(i % 3 === 0 ? '#8a6640' : i % 3 === 1 ? '#7a5838' : '#94704a'))));
+  }
+  // Längsbalken unter dem Deck
+  for (const side of [-dk.hw * 0.8, dk.hw * 0.8]) {
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n, t1 = (i + 1) / n;
+      const [x, y, z] = at((t0 + t1) / 2, side);
+      const slope = Math.atan2(deckY(t1) - deckY(t0), dk.len / n);
+      parts.push(part(new THREE.BoxGeometry(0.14, 0.16, dk.len / n * 1.02), { p: [x, y - 0.18, z], r: [-slope, ang, 0], order: 'YXZ' }, '#5e4129'));
+    }
+  }
+  // Geländer: Pfosten und Handlauf
+  const posts = Math.max(3, Math.round(dk.len / 1.6));
+  for (const side of [-dk.hw, dk.hw]) {
+    for (let i = 0; i <= posts; i++) {
+      const [x, y, z] = at(i / posts, side);
+      parts.push(part(new THREE.BoxGeometry(0.09, 0.9, 0.09), { p: [x, y + 0.42, z] }, '#6a4a2c'));
+    }
+    for (let i = 0; i < posts; i++) {
+      const t0 = i / posts, t1 = (i + 1) / posts;
+      const [x, y, z] = at((t0 + t1) / 2, side);
+      const slope = Math.atan2(deckY(t1) - deckY(t0), dk.len / posts);
+      parts.push(part(new THREE.BoxGeometry(0.07, 0.07, dk.len / posts * 1.02), { p: [x, y + 0.86, z], r: [-slope, ang, 0], order: 'YXZ' }, '#8a6a44'));
+      parts.push(part(new THREE.BoxGeometry(0.05, 0.05, dk.len / posts * 1.02), { p: [x, y + 0.48, z], r: [-slope, ang, 0], order: 'YXZ' }, '#7a5c3a'));
+    }
+  }
+  // Stützpfeiler ins Wasser
+  for (const t of [0.3, 0.7]) {
+    for (const side of [-dk.hw * 0.8, dk.hw * 0.8]) {
+      const [x, y, z] = at(t, side);
+      const h = y + 3.5;
+      parts.push(part(new THREE.CylinderGeometry(0.12, 0.14, h, 6), { p: [x, y - h / 2 - 0.15, z] }, '#4e3622'));
+    }
+  }
+  return merge(parts);
+}
+
+// --- Tiere -------------------------------------------------------------------
+export function hareGeometry(fur = '#9a7b5a') {
+  const pink = '#e9a5a0';
+  return merge([
+    part(new THREE.SphereGeometry(0.2, 8, 6), { p: [0, 0.22, -0.03], s: [1, 0.9, 1.35] }, fur),
+    part(new THREE.SphereGeometry(0.12, 7, 5), { p: [0, 0.38, 0.22], s: [1, 0.95, 1.1] }, fur),
+    part(new THREE.CapsuleGeometry(0.035, 0.24, 3, 6), { p: [-0.05, 0.6, 0.15], r: [-0.35, 0, 0.18] }, fur),
+    part(new THREE.CapsuleGeometry(0.035, 0.24, 3, 6), { p: [0.05, 0.6, 0.15], r: [-0.35, 0, -0.18] }, fur),
+    part(new THREE.CapsuleGeometry(0.018, 0.18, 2, 5), { p: [-0.05, 0.6, 0.17], r: [-0.35, 0, 0.18] }, pink),
+    part(new THREE.CapsuleGeometry(0.018, 0.18, 2, 5), { p: [0.05, 0.6, 0.17], r: [-0.35, 0, -0.18] }, pink),
+    part(new THREE.SphereGeometry(0.022, 5, 4), { p: [-0.07, 0.42, 0.31] }, '#111111'),
+    part(new THREE.SphereGeometry(0.022, 5, 4), { p: [0.07, 0.42, 0.31] }, '#111111'),
+    part(new THREE.SphereGeometry(0.02, 5, 4), { p: [0, 0.36, 0.34] }, pink),
+    part(new THREE.SphereGeometry(0.07, 7, 5), { p: [0, 0.27, -0.29] }, '#f4f1ea'),
+    part(new THREE.SphereGeometry(0.08, 6, 5), { p: [-0.12, 0.08, -0.08], s: [0.7, 0.6, 1.6] }, fur),
+    part(new THREE.SphereGeometry(0.08, 6, 5), { p: [0.12, 0.08, -0.08], s: [0.7, 0.6, 1.6] }, fur),
+  ]);
+}
+
+export function marmotGeometry() {
+  const fur = '#8a6a48', belly = '#c9a77c';
+  return merge([
+    part(new THREE.CapsuleGeometry(0.17, 0.18, 4, 8), { p: [0, 0.22, 0], r: [PI / 2 - 0.2, 0, 0], s: [1.1, 1, 1] }, fur),
+    part(new THREE.SphereGeometry(0.13, 8, 6), { p: [0, 0.2, 0.08], s: [1, 0.8, 1] }, belly),
+    part(new THREE.SphereGeometry(0.11, 8, 6), { p: [0, 0.34, 0.24] }, fur),
+    part(new THREE.SphereGeometry(0.05, 6, 4), { p: [0, 0.31, 0.33] }, belly),
+    part(new THREE.SphereGeometry(0.02, 5, 4), { p: [0, 0.33, 0.37] }, '#1d1612'),
+    part(new THREE.SphereGeometry(0.018, 5, 4), { p: [-0.05, 0.38, 0.32] }, '#111111'),
+    part(new THREE.SphereGeometry(0.018, 5, 4), { p: [0.05, 0.38, 0.32] }, '#111111'),
+    part(new THREE.SphereGeometry(0.03, 5, 4), { p: [-0.08, 0.44, 0.2] }, '#6b4f33'),
+    part(new THREE.SphereGeometry(0.03, 5, 4), { p: [0.08, 0.44, 0.2] }, '#6b4f33'),
+    part(new THREE.CapsuleGeometry(0.04, 0.12, 2, 5), { p: [0, 0.12, -0.24], r: [-1.1, 0, 0] }, '#4a3a2a'),
+  ]);
+}
+
+export function duckGeometry(female = false) {
+  const body = female ? '#8a6a48' : '#d9d4c8';
+  const head = female ? '#7a5c3c' : '#1f6b3a';
+  return merge([
+    part(new THREE.SphereGeometry(0.2, 10, 7), { p: [0, 0.08, 0], s: [0.85, 0.6, 1.25] }, body),
+    part(new THREE.ConeGeometry(0.09, 0.18, 6), { p: [0, 0.14, -0.27], r: [-PI / 2 - 0.5, 0, 0] }, female ? '#6b4f33' : '#3a3a3a'),
+    part(new THREE.SphereGeometry(0.1, 8, 6), { p: [0, 0.3, 0.18] }, head),
+    part(new THREE.TorusGeometry(0.06, 0.012, 4, 10), { p: [0, 0.22, 0.17], r: [PI / 2, 0, 0] }, female ? body : '#ffffff'),
+    part(new THREE.BoxGeometry(0.06, 0.03, 0.12), { p: [0, 0.28, 0.3] }, '#f2a024'),
+    part(new THREE.SphereGeometry(0.016, 4, 3), { p: [-0.06, 0.33, 0.24] }, '#111111'),
+    part(new THREE.SphereGeometry(0.016, 4, 3), { p: [0.06, 0.33, 0.24] }, '#111111'),
+    part(new THREE.SphereGeometry(0.11, 6, 4), { p: [-0.12, 0.13, -0.02], s: [0.4, 0.5, 1.2] }, female ? '#6b4f33' : '#7a7a8a'),
+    part(new THREE.SphereGeometry(0.11, 6, 4), { p: [0.12, 0.13, -0.02], s: [0.4, 0.5, 1.2] }, female ? '#6b4f33' : '#7a7a8a'),
+  ]);
+}
+
+export function butterflyGeometry() {
+  const g1 = new THREE.CircleGeometry(0.07, 6);
+  const g2 = new THREE.CircleGeometry(0.05, 6);
+  return merge([
+    part(g1, { p: [0.06, 0, 0.02], r: [-PI / 2, 0, 0], s: [1, 1.2, 1] }, '#ffffff'),
+    part(g2, { p: [0.05, 0, -0.06], r: [-PI / 2, 0, 0] }, '#ffffff'),
+    part(new THREE.CircleGeometry(0.07, 6), { p: [-0.06, 0, 0.02], r: [-PI / 2, 0, 0], s: [1, 1.2, 1] }, '#ffffff'),
+    part(new THREE.CircleGeometry(0.05, 6), { p: [-0.05, 0, -0.06], r: [-PI / 2, 0, 0] }, '#ffffff'),
+    part(new THREE.CapsuleGeometry(0.01, 0.1, 2, 4), { r: [PI / 2, 0, 0] }, '#222222'),
+  ]);
+}
+
+export function birdGeometry() {
+  return merge([
+    part(new THREE.CapsuleGeometry(0.08, 0.3, 3, 6), { r: [PI / 2, 0, 0] }, '#3a3a3a'),
+    part(new THREE.BoxGeometry(0.7, 0.02, 0.22), { p: [-0.36, 0.06, 0], r: [0, 0, 0.25] }, '#2a2a2a'),
+    part(new THREE.BoxGeometry(0.7, 0.02, 0.22), { p: [0.36, 0.06, 0], r: [0, 0, -0.25] }, '#2a2a2a'),
+    part(new THREE.BoxGeometry(0.18, 0.02, 0.14), { p: [0, 0, -0.24] }, '#2a2a2a'),
+    part(new THREE.ConeGeometry(0.03, 0.08, 4), { p: [0, 0, 0.24], r: [PI / 2, 0, 0] }, '#d9a020'),
+  ]);
 }

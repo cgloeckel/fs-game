@@ -175,7 +175,7 @@ export class HUD {
     show('overview', mv || aim);
     const fireBtn = r.querySelector('[data-cmd="fire"] span');
     if (fireBtn && W) {
-      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.type === 'jump' ? 'Spring!' : W.type === 'drive' ? 'Los!' : W.type === 'ballistic' ? 'Tipp/Halten' : 'Feuer';
+      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.type === 'jump' ? 'Spring!' : W.type === 'drive' ? 'Los!' : (W.type === 'ballistic' && this.touch) ? 'Tipp/Halten' : 'Feuer';
     }
     r.querySelector('.joy').classList.toggle('off', !(mv || aim || ret) || game.overview);
     this.updateWeaponButton(game);
@@ -200,7 +200,12 @@ export class HUD {
     const human = game.team && game.team.human;
     let t = '';
     if (human && ph === 'move') t = '<b>W/S</b> gehen · <b>A/D</b> drehen · <b>Leertaste</b> hupfen · <b>F</b> oder <b>Rechtsklick</b> zielen · <b>Q</b> Waffen · <b>Tab</b> wechseln · <b>M</b> Karte · <b>X</b> Zug beenden · Maus ziehen = Kamera';
-    else if (human && ph === 'aim') {
+    else if (human && ph === 'aim' && game.tac) {
+      const W = WEAPONS[game.weapon];
+      t = W.type === 'drive'
+        ? '<b>Maus</b> zeigt die Fahrtrichtung · <b>Klick</b> = Los! · <b>Mausrad</b> Zoom · <b>A/D</b> oder ziehen = Ansicht drehen · <b>E</b> nächstes Ziel · <b>Rechtsklick/Esc</b> zurück'
+        : '<b>Maus</b> aufs Ziel zeigen · <b>Klick</b> = Feuer (Winkel, Kraft &amp; Wind rechnet das Spiel) · <b>W/S</b> Bogen hoch/flach · <b>Mausrad</b> Zoom · <b>A/D</b> oder ziehen = Ansicht drehen · <b>E</b> nächstes Ziel · <b>Rechtsklick/Esc</b> zurück';
+    } else if (human && ph === 'aim') {
       const W = WEAPONS[game.weapon];
       const locked = this.app.input.locked;
       const mouse = locked ? '<b>Maus</b> zielen · ' : '<b>Klick ins Bild</b> = Maus fangen · ';
@@ -386,7 +391,7 @@ export class HUD {
     // Kraftbalken
     const pw = this.$('.power');
     const Wc = game.weapon ? WEAPONS[game.weapon] : null;
-    const humanBall = game.phase === 'aim' && game.team && game.team.human && Wc && Wc.type === 'ballistic';
+    const humanBall = game.phase === 'aim' && game.team && game.team.human && Wc && Wc.type === 'ballistic' && !game.tac;
     if (game.charging || humanBall) {
       pw.classList.add('show');
       pw.querySelector('i').style.width = `${(game.charging ? game.power : 0) * 100}%`;
@@ -412,6 +417,8 @@ export class HUD {
       let t = '';
       if (ai0.enemy) t = ai0.melee ? `${ai0.enemy.s.name} in Reichweite!` : ai0.swarm ? `Schwarm auf: ${ai0.enemy.s.name}` : ai0.head ? `Kopf! ${ai0.enemy.s.name}` : `Treffer: ${ai0.enemy.s.name}`;
       else if (ai0.friend) t = `Achtung, ${ai0.friend.s.name}!`;
+      else if (game.tac && game.tac.reach === 'far') t = `Z'weit weg – max. ca. ${game.tac.maxR} m`;
+      else if (game.tac && game.tac.reach === 'blocked') t = 'Da is was im Weg – W/S für an anderen Bogen';
       else if (ai0.water) t = 'Ins Wasser';
       else if (ai0.melee) t = 'Ka Gegner in Reichweite';
       else if (ai0.range) t = 'Außer Reichweite';
@@ -426,7 +433,7 @@ export class HUD {
       const W = WEAPONS[game.weapon];
       const deg = Math.round((u.aimPitch * 180) / Math.PI);
       ai.textContent = W.type === 'ballistic'
-        ? `Winkel ${deg}° · Kraft ${Math.round((game.charging ? game.power : (game.presetPower ? game.presetPower() : 0)) * 100)}%`
+        ? `Winkel ${deg}° · Kraft ${Math.round((game.charging ? game.power : (game.presetPower ? game.presetPower() : 0)) * 100)}%${game.tac ? ` · Bogen: ${game.tac.arc === 'auto' ? 'auto' : game.tac.arc}` : ''}`
         : `${W.name} · ${deg}°`;
       ai.classList.add('show');
     } else ai.classList.remove('show');
@@ -438,7 +445,7 @@ export class HUD {
       this.toastT -= dt;
       if (this.toastT <= 0) this.$('.toast').classList.remove('show');
     }
-    const lk = `${game.phase}|${this.app.input.locked}`;
+    const lk = `${game.phase}|${this.app.input.locked}|${!!game.tac}|${game.weapon}`;
     if (this.last.lock !== lk) { this.last.lock = lk; this.updateKeyHints(game); }
     if (game.unit && game.weapon && this.last.wb !== `${game.weapon}|${game.unit.ammo[game.weapon]}`) {
       this.last.wb = `${game.weapon}|${game.unit.ammo[game.weapon]}`;
@@ -460,7 +467,8 @@ export class HUD {
         <li><b>🔥 antippen</b> feuert mit der eingestellten Kraft (der Kreis zeigt den Einschlag). <b>🔥 halten</b> lädt die Kraft selbst auf – loslassen = Wurf.</li>` : `
         <li><b>W/S</b> gehen, <b>A/D</b> drehen, <b>Leertaste</b> hupfen, Maus ziehen = Kamera.</li>
         <li><b>F</b> oder <b>Rechtsklick</b> zielen, <b>Q</b> Waffenkammer, <b>1–9</b> Schnellwahl.</li>
-        <li>Beim Zielen wird die Maus eingefangen: <b>Maus bewegen</b> = zielen, <b>Linksklick</b> = Feuer, <b>Mausrad</b> = Kraft, <b>Rechtsklick</b> oder <b>Esc</b> = zurück.</li>
+        <li>Gewehre: Maus wird eingefangen – <b>Maus bewegen</b> = zielen, <b>Linksklick</b> = Feuer, <b>Rechtsklick</b> oder <b>Esc</b> = zurück.</li>
+        <li>Wurfwaffen: <b>Maus aufs Ziel</b>, <b>Klick</b> = Wurf, <b>W/S</b> Bogen hoch/flach.</li>
         <li><b>E</b> dreht zum nächsten Gegner und stellt bei Granaten die passende Kraft ein, <b>M</b> zeigt die Karte.</li>
         <li><b>Enter</b> feuert mit der eingestellten Kraft (Kreis = Einschlag), <b>Leertaste halten</b> lädt die Kraft selbst auf.</li>`}
         <li>Das <b>Fadenkreuz</b> sitzt genau dort, wo der Schuss hingeht – <b style="color:#ff5a4a">rot</b> = Treffer. Bei Wurfwaffen zeigt der <b>Kreis</b> den Einschlag samt Wind.</li>

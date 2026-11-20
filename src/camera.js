@@ -112,6 +112,20 @@ export class CameraRig {
         }
         break;
       }
+      case 'tactical': {
+        // feste Übersicht hinter dem Schützen – die Maus zeigt den Einschlagspunkt
+        const tc = this.tc;
+        if (o && tc) {
+          const fx = Math.sin(tc.yaw), fz = Math.cos(tc.yaw);
+          this.goal.set(o.pos.x + fx * tc.ahead * 0.55, o.pos.y + 0.5, o.pos.z + fz * tc.ahead * 0.55);
+          wantYaw = tc.yaw + Math.PI;
+          this.goalDist = 12 + tc.ahead * 0.85;
+          this.goalPitch = 0.82;
+          this.goalFov = 55;
+          snap = 5;
+        }
+        break;
+      }
       case 'track': {
         if (o) {
           this.goal.copy(o.pos || o);
@@ -157,7 +171,7 @@ export class CameraRig {
       this.pitch = this.goalPitch;
       wantYaw = null;
     }
-    if (wantYaw !== null) this.yaw += angleDiff(this.yaw, wantYaw) * (1 - Math.exp(-dt * (this.mode === 'aim' ? 12 : 2.5)));
+    if (wantYaw !== null) this.yaw += angleDiff(this.yaw, wantYaw) * (1 - Math.exp(-dt * (this.mode === 'aim' ? 12 : this.mode === 'tactical' ? 6 : 2.5)));
     this.target.x = damp(this.target.x, this.goal.x, snap, dt);
     this.target.y = damp(this.target.y, this.goal.y, snap, dt);
     this.target.z = damp(this.target.z, this.goal.z, snap, dt);

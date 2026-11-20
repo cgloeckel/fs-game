@@ -12,7 +12,9 @@ Ein Fan-Remaster im Geist der rundenbasierten Artillerie-Klassiker aus dem Jahr 
 - **Bundesheer-Dienstgrade:** vom Rekrut über Gefreiter, Zugsführer und Wachtmeister bis zu Leutnant (Held) und Hauptmann (Legende)
 - **Beförderungsbaum mit 4 Laufbahnen:** Schwere Waffen, Pioniere, Sanität und Jäger, dazu Heldenränge; gefallene Viecher bleiben weg (Permadeath)
 - **23 Waffen:** Kopfnuss, Dienstpistole, Sturmgewehr, MG, Jagdflinte, Scharfschützengewehr, Mistgabel, Handgranate, Splittergranate, Güllebombe, Wespennest, Panzerfaust, Granatwerfer, Heilige-Kuh-Bombe, Amok-Traktor, Kuhfladen-Mine, Sprengladung, Obstler-Flammenwerfer, Brettljause, Feldlazarett, Fallschirmsprung, Haubitzenfeuer und Abfangjäger
-- **Verformbares Gelände:** Krater, Wind, Wasser, Kisten vom Himmel und zerstörbare Bäume und Heuballen
+- **Lebendige Inseln:** Bergsee mit Holzbrücke, Feldweg mit Zaun und Marterl, Wäldchen und Lichtungen, Blumenwiesen, Sonnenblumenfelder, Heumandln, Vogelscheuchen, Seerosen und rauchende Rauchfänge
+- **Tiere:** Hoppelhasen (die bei Explosionen eine Flugstunde nehmen), pfeifende Murmeltiere, eine Entenfamilie, Schmetterlinge und kreisende Bussarde – rein zur Zierde, ihnen passiert nix
+- **Verformbares Gelände:** Krater, Wind, Wasser, Kisten vom Himmel und zerstörbare Bäume, Heuballen und Heumandln
 - **CPU-Gegner** in drei Stärken: Sie rechnen Flugbahnen durch, verschätzen sich aber beim Wind, streuen und bauen auch mal an Patzer
 - **Schnelles Gefecht** mit 2–4 Teams, auch als Hot-Seat für mehrere Menschen an einem Gerät
 - **Neun Fraktionen**, eine pro Bundesland: von der Wiener Grantlergarde bis zur Seewinkler Weinbrigade
@@ -27,9 +29,9 @@ Ein Fan-Remaster im Geist der rundenbasierten Artillerie-Klassiker aus dem Jahr 
 | Gehen / Drehen | Joystick links | W/S, A/D |
 | Kamera | Wischen, zwei Finger zoomen | Maus ziehen, Mausrad |
 | Hupfen | ⤴ | Leertaste |
-| Zielen | 🎯, dann wischen | F oder Rechtsklick, dann Maus bewegen (Maus wird eingefangen) |
-| Feuer | 🔥 antippen (halten = Kraft selbst laden) | Linksklick (halten = Kraft selbst laden) |
-| Kraft bei Wurfwaffen | ⌖ stellt sie ein | Mausrad oder E |
+| Zielen | 🎯, dann wischen | F oder Rechtsklick; Gewehre: Maus bewegen (Maus wird eingefangen) |
+| Wurfwaffen (Granate, Panzerfaust, Mörser …) | 🎯, wischen, ⌖ stellt die Kraft ein | Maus aufs Ziel zeigen und klicken – Winkel, Kraft und Wind rechnet das Spiel; W/S = Bogen hoch/flach, Mausrad = Zoom, A/D = Ansicht drehen |
+| Feuer | 🔥 antippen (halten = Kraft selbst laden) | Linksklick |
 | Nächstes Ziel | ⌖ | E |
 | Zurück | ✖ | Rechtsklick oder Esc |
 | Waffenkammer | Waffen-Button | Q oder 1–9 |
@@ -52,7 +54,8 @@ python3 -m http.server 8000   # dann http://localhost:8000
 Quellcode in `src/`:
 - `game.js`: Rundenablauf und Waffenwirkung
 - `ai.js`: CPU-Gegner
-- `terrain.js` / `world.js`: Insel und Umgebung
+- `terrain.js` / `world.js`: Insel, See, Brücke, Feldweg und Requisiten
+- `life.js`: Hasen, Murmeltiere, Enten, Schmetterlinge und Bussarde
 - `models.js`: Rindsviecher und Requisiten
 - `menus.js` / `hud.js`: Oberfläche
 - `campaign.js`: Feldzug und Beförderungen

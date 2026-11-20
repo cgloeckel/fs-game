@@ -12,6 +12,7 @@ import { itemGeometry, materials } from './models.js';
 import { line, pick, ANNOUNCE } from './text.js';
 import { clamp, dist2D, DEG } from './util.js';
 import { audio } from './audio.js';
+import { Life } from './life.js';
 
 const V3 = THREE.Vector3;
 const NOOP_HUD = new Proxy({}, { get: () => () => {} });
@@ -88,8 +89,8 @@ export class Game {
     this.env = { terrain: this.terrain, wind: this.wind, units: this.units, obstacles: this.world.obstacles, grid: this.world.obstacleGrid, waterLevel: 0, owner: null };
     this.envCalm = { ...this.env, wind: { x: 0, z: 0 } };
     this.createTeams();
+    this.life = new Life(this, opts.seed || 1);
     this.createMarkers();
-    if (!this.demo) audio.setEcho(['alm', 'gletscher', 'steinbruch'].includes(opts.theme) ? 0.3 : 0.1);
     if (this.rules.mines) this.scatterMines(this.rules.mines);
   }
 
@@ -249,10 +250,18 @@ export class Game {
     audio[name](...args);
   }
 
-  // Rindsviech-Laut zum Anlass (eigene Stimme pro Viech)
+  // Das bewährte Muhen von früher (je nach Anlass etwas anders gestimmt)
   vocal(u, event, chance = 1) {
     if (!u || this.demo || Math.random() > chance) return;
-    audio.cattle(event, u.voice);
+    const st = u.isStier;
+    const tune = {
+      select: [st ? 0.72 : 1.05, 0.3],
+      attack: [st ? 0.7 : 1, 0.4],
+      hurt: [st ? 0.8 : 1.15, 0.45],
+      death: [st ? 0.55 : 0.75, 0.45],
+      drown: [st ? 0.55 : 0.75, 0.45],
+    }[event];
+    if (tune) audio.moo(tune[0], tune[1]);
   }
 
   say(u, cat, chance = 1) {
@@ -372,7 +381,6 @@ export class Game {
     this.overview = false;
     this.hud.phase(this);
     this.hud.closeWeaponMenu();
-    if (this.unit && this.unit.alive) this.vocal(this.unit, 'turnEnd', 0.3);
     for (const m of this.mines) m.armed = true;
     for (const g of this.gases) {
       for (const u of this.units) {
@@ -386,6 +394,7 @@ export class Game {
     this.gases = this.gases.filter((g) => g.turns > 0);
     this.after(0.35, () => {
       this.settleT2 = 0;
+      this.settleWait = 0;
       this.settleCb = () => {
         if (!this.checkVictory()) this.startTurn();
       };
@@ -423,7 +432,7 @@ export class Game {
       alive.forEach((u, i) => {
         u.cheer = 0.01;
         u.aiming = false;
-        if (i < 2) this.after(0.4 + i * 0.6, () => { this.say(u, 'victory'); this.vocal(u, 'triumph'); });
+        if (i < 2) this.after(0.4 + i * 0.6, () => this.say(u, 'victory'));
       });
       this.cam.setMode('orbit', alive[0] || { pos: new V3() }, { dist: 13, pitch: 0.28 });
       this.hud.announce(winner.human && this.teams.filter((t) => t.human).length === 1 ? 'Sieg!' : `${winner.short} gewinnt!`, winner.name, 3.5);
@@ -477,6 +486,7 @@ export class Game {
         if (this.phase === 'move') this.enterAim();
         break;
       case 'back':
+        this.stopTactical();
         if (this.phase === 'aim' || this.phase === 'target') {
           this.phase = 'move';
           this.charging = false;
@@ -583,7 +593,7 @@ export class Game {
       else u.aimPitch = clamp(u.aimPitch, this.pitchMin(W), this.pitchMax(W));
       if (W.type === 'hitscan' && Math.abs(u.aimPitch) > 0.5) u.aimPitch = 0.05;
       if (['heal', 'place', 'melee', 'drive'].includes(W.type)) u.aimPitch = 0;
-      this.grabMouse();
+      if (this.usesTactical(W)) { this.app.input.exitLock(); this.startTactical(u, W); } else { this.stopTactical(); this.grabMouse(); }
     }
     this.hud.phase(this);
   }
@@ -600,7 +610,111 @@ export class Game {
   }
 
   wantsLock() {
-    return this.humanTurn && this.phase === 'aim' && !this.paused && !this.overview && !this.hud.weaponMenuOpen;
+    return this.humanTurn && this.phase === 'aim' && !this.paused && !this.overview && !this.hud.weaponMenuOpen && !this.tac;
+  }
+
+  // --- Desktop: Wurfwaffen und Traktor per Zeigen & Klicken ----------------------
+  usesTactical(W) {
+    return !!(this.app.input.canLock && W && (W.type === 'ballistic' || W.type === 'drive'));
+  }
+
+  startTactical(u, W) {
+    const id = this.weapon;
+    this.tac = {
+      yaw: u.yaw, ahead: W.type === 'drive' ? 18 : (id === 'panzerfaust' || id === 'moerser') ? 26 : 15,
+      arc: 'auto', target: null, lastSolve: 0, solvedAt: null, reach: 'ok', snap: null, hold: false,
+      maxR: W.type === 'ballistic' ? this.maxRange(u, W) : 999,
+    };
+    this.app.input.mouseMoved = 0;
+    this.app.canvas.classList.add('tac-cursor');
+    if (!this.tacHintShown) {
+      this.tacHintShown = true;
+      this.hud.toast('🎯 Zeig mit der Maus aufs Ziel und klick – Winkel, Kraft und Wind rechnet das Spiel. W/S = Bogen hoch/flach', 5);
+    }
+  }
+
+  stopTactical() {
+    if (!this.tac) return;
+    this.tac = null;
+    this.app.canvas.classList.remove('tac-cursor');
+  }
+
+  updateTactical(dt) {
+    const tac = this.tac;
+    if (!tac) return;
+    const u = this.unit;
+    const W = WEAPONS[this.weapon];
+    if (!this.humanTurn || this.phase !== 'aim' || !u || !u.alive || !this.usesTactical(W) || this.overview) {
+      this.stopTactical();
+      return;
+    }
+    const inp = this.app.input;
+    const w = this.app.width, h = this.app.height;
+    // Ansicht drehen: A/D oder Maus am Bildrand
+    const ax = inp.axis().x;
+    if (ax) tac.yaw -= ax * 1.4 * dt;
+    if (inp.mouseX >= 0) {
+      if (inp.mouseX < 18) tac.yaw += 1.1 * dt;
+      else if (inp.mouseX > w - 18) tac.yaw -= 1.1 * dt;
+    }
+    if (inp.mouseX < 0 || (tac.hold && inp.mouseMoved < 12)) return;
+    if (tac.hold) tac.hold = false;
+    const now = this.time;
+    if (now - tac.lastSolve < 0.07) return;
+    // Mausstrahl ins Gelände
+    const nx = (inp.mouseX / w) * 2 - 1, ny = -(inp.mouseY / h) * 2 + 1;
+    const r = this.cam.screenRay(nx, ny);
+    const hit = this.terrain.raycast(r.origin, r.dir, 700, 0.6);
+    if (!hit) return;
+    let T = hit.point;
+    // In der Nähe eines Gegners? -> einrasten
+    tac.snap = null;
+    let bestPx = 34;
+    for (const e of this.units) {
+      if (!e.alive || e.team === u.team) continue;
+      const p = this.hud.project(e.getCenter(), this.cam.cam, w, h);
+      if (!p) continue;
+      const d = Math.hypot(p.x - inp.mouseX, p.y - inp.mouseY);
+      if (d < bestPx) { bestPx = d; tac.snap = e; }
+    }
+    if (tac.snap) T = tac.snap.pos.clone();
+    if (tac.solvedAt && tac.solvedAt.distanceTo(T) < 0.25 && tac.solvedArc === tac.arc) return;
+    tac.lastSolve = now;
+    tac.target = T.clone();
+    this.solveTactical(u, W, T);
+  }
+
+  solveTactical(u, W, T) {
+    const tac = this.tac;
+    tac.solvedAt = T.clone();
+    tac.solvedArc = tac.arc;
+    if (W.type === 'drive') {
+      u.yaw = Math.atan2(T.x - u.pos.x, T.z - u.pos.z);
+      tac.reach = 'ok';
+      return;
+    }
+    const full = (this.settings.aimHelp || 'full') !== 'off';
+    // Ziel außer Reichweite: so weit wie möglich in die Richtung werfen
+    const dist = dist2D(u.pos.x, u.pos.z, T.x, T.z);
+    const far = dist > tac.maxR + 1;
+    let tp = T;
+    if (far) {
+      const k = Math.max(0, tac.maxR - 0.5) / dist;
+      tp = new V3(u.pos.x + (T.x - u.pos.x) * k, 0, u.pos.z + (T.z - u.pos.z) * k);
+      tp.y = this.terrain.heightAt(tp.x, tp.z);
+    }
+    const res = this.aimBallistic(u, W, tp, full && this.settings.aimHelp !== 'short', tac.arc);
+    if (res) {
+      this.lastPower[this.weapon] = res.power;
+      const effR = W.swarm ? W.swarm.range * 0.5 : Math.max(1.5, W.radius * 0.6);
+      tac.reach = far ? 'far' : res.err < effR ? 'ok' : 'blocked';
+    } else {
+      u.yaw = Math.atan2(T.x - u.pos.x, T.z - u.pos.z);
+      u.aimPitch = clamp(45 * DEG, this.pitchMin(W), this.pitchMax(W));
+      this.lastPower[this.weapon] = 1;
+      tac.reach = far ? 'far' : 'blocked';
+    }
+    this.powerHint = null;
   }
 
   onLook(dx, dy) {
@@ -629,6 +743,10 @@ export class Game {
 
   onWheel(dir, e) {
     const W = this.weapon ? WEAPONS[this.weapon] : null;
+    if (this.tac) {
+      this.tac.ahead = clamp(this.tac.ahead * (dir > 0 ? 1.12 : 0.89), 6, 75);
+      return;
+    }
     // Beim Zielen mit Wurfwaffen stellt das Mausrad die Kraft ein (Kreis wandert mit)
     if (this.humanTurn && this.phase === 'aim' && W && W.type === 'ballistic' && !this.charging) {
       const fine = e && e.shiftKey ? 0.005 : 0.02;
@@ -655,9 +773,12 @@ export class Game {
   }
 
   // Winkel, Kraft und (bei voller Zielhilfe) Windausgleich für Wurfwaffen
-  aimBallistic(u, W, tp, full) {
+  aimBallistic(u, W, tp, full, arc = 'auto') {
     const id = this.weapon;
-    const order = id === 'panzerfaust' ? [10, 18, 28, 40, 52] : W.minPitch ? [60, 50, 70, 45] : [45, 35, 55, 65, 25];
+    const tube = id === 'panzerfaust';
+    let order = tube ? [10, 18, 28, 40, 52] : W.minPitch ? [60, 50, 70, 45] : [45, 35, 55, 65, 25];
+    if (arc === 'hoch') order = tube ? [35, 45, 55] : [60, 65, 55, 70, 50];
+    if (arc === 'flach') order = tube ? [5, 9, 14, 20] : W.minPitch ? [40, 45, 36] : [22, 28, 34, 18, 40];
     const baseYaw = Math.atan2(tp.x - u.pos.x, tp.z - u.pos.z);
     let best = null;
     for (const deg of order) {
@@ -762,6 +883,17 @@ export class Game {
     } else {
       this.hud.toast(`Ziel: ${t.name} (${dist} m)`);
     }
+    if (this.tac) {
+      const tac = this.tac;
+      tac.yaw = u.yaw;
+      tac.ahead = clamp(dist * 0.75, 8, 70);
+      tac.hold = true;
+      this.app.input.mouseMoved = 0;
+      tac.target = t.pos.clone();
+      tac.solvedAt = t.pos.clone();
+      tac.solvedArc = tac.arc;
+      tac.reach = this.powerHint || W.type === 'drive' ? 'ok' : 'far';
+    }
     this.sfx('click');
   }
 
@@ -798,8 +930,14 @@ export class Game {
   }
 
   onTap(nx, ny, e) {
+    if (this.humanTurn && this.phase === 'aim' && this.tac && e) {
+      if (e.button === 2) { this.cmd('back'); return; }
+      if (e.pointerType === 'mouse') this.updateTactical(1);
+      this.fire({ power: this.presetPower() });
+      return;
+    }
     if (this.humanTurn && e && e.pointerType === 'mouse') {
-      if (this.phase === 'aim') { this.grabMouse(); return; }
+      if (this.phase === 'aim') { if (e.button === 2) this.cmd('back'); else this.grabMouse(); return; }
       if (this.phase === 'move' && e.button === 2) { this.cmd('aim'); return; }
     }
     if (!this.humanTurn || this.phase !== 'target') return;
@@ -826,6 +964,11 @@ export class Game {
     if (this.disposed) return;
     const sens = this.settings.camSens || 1;
     const u = this.unit;
+    if (this.tac && this.humanTurn && this.phase === 'aim') {
+      this.tac.yaw -= dx * 0.005 * sens;
+      this.tac.ahead = clamp(this.tac.ahead + dy * 0.08, 6, 75);
+      return;
+    }
     if (this.humanTurn && this.phase === 'aim' && (pointerType !== 'mouse' || button === 0)) {
       const W = WEAPONS[this.weapon];
       const zk = this.cam.fov / 55; // im Fernrohr feiner
@@ -875,6 +1018,20 @@ export class Game {
         break;
       case 'KeyM':
         this.cmd('overview');
+        break;
+      case 'KeyW':
+      case 'ArrowUp':
+      case 'KeyS':
+      case 'ArrowDown':
+        if (this.tac && WEAPONS[this.weapon].type === 'ballistic') {
+          const up = code === 'KeyW' || code === 'ArrowUp';
+          const order = ['flach', 'auto', 'hoch'];
+          const i = clamp(order.indexOf(this.tac.arc) + (up ? 1 : -1), 0, 2);
+          this.tac.arc = order[i];
+          this.tac.lastSolve = 0;
+          if (this.tac.target) this.solveTactical(this.unit, WEAPONS[this.weapon], this.tac.target);
+          this.hud.toast({ flach: 'Flacher Bogen', auto: 'Bogen: automatisch', hoch: 'Hoher Bogen' }[this.tac.arc], 1.2);
+        }
         break;
       default:
         if (code.startsWith('Digit')) {
@@ -1444,6 +1601,7 @@ export class Game {
       this.world.settleProps(p.x, p.z, radius);
     }
     this.world.destroyInRadius(p.x, p.y, p.z, radius * 0.75, this.fx);
+    this.life.onExplosion(p, radius);
     for (const u of this.units) {
       if (!u.alive) continue;
       const c = u.getCenter();
@@ -1489,7 +1647,6 @@ export class Game {
     if (u.hp <= 0) {
       this.kill(u, src, kind);
     } else if (u.hp > 0) {
-      this.vocal(u, 'hurt', 0.45);
       if (src === u) this.say(u, 'selfHit', 0.8);
       else if (src && src.team === u.team) this.say(u, 'friendly', 0.8);
       else this.say(u, 'hit', 0.45);
@@ -1511,7 +1668,7 @@ export class Game {
     if (src && src.team !== u.team) {
       src.stats.kills++;
       if (this.shot && src === this.unit) this.shot.kills++;
-      if (src.alive) this.after(0.9, () => { this.say(src, 'kill', 0.7); this.vocal(src, 'triumph', 0.6); });
+      if (src.alive) this.after(0.9, () => this.say(src, 'kill', 0.7));
     } else if (src === u && !this.demo) {
       this.hud.announce(pick(ANNOUNCE.selfKill), u.name, 1.4);
     }
@@ -1614,6 +1771,7 @@ export class Game {
     this.env.waterLevel = this.terrain.waterLevel;
     this.envCalm.waterLevel = this.terrain.waterLevel;
     this.world.update(dt);
+    this.life.update(dt);
     if (this.waterAnim) {
       const a = this.waterAnim;
       a.t += dt / 1.6;
@@ -1637,6 +1795,14 @@ export class Game {
     this.fx.update(dt);
     this.updatePhase(dt);
     this.updateCamera(dt);
+    {
+      const c = this.cam;
+      const sniper = c.mode === 'aim' && c.opts && c.opts.sniper;
+      const focus = (c.mode === 'aim' || c.mode === 'tactical') && this.unit ? this._occF || (this._occF = new V3()) : c.target;
+      if (focus !== c.target) focus.set(this.unit.pos.x, this.unit.pos.y + 1.2, this.unit.pos.z);
+      this.world.updateOcclusion(c.cam.position, focus, dt, !sniper && c.mode !== 'overview');
+    }
+    this.updateTactical(dt);
     this.updateMarkers(dt);
     if (this.app.input.locked && !this.wantsLock()) this.app.input.exitLock();
     this.hud.frame(this, dt);
@@ -1652,7 +1818,7 @@ export class Game {
     if ((this.phase === 'move' || this.phase === 'retreat') && !this.overview) {
       if (inp.x) u.yaw -= inp.x * 2.6 * dt;
       if (inp.y) this.walk(u, inp.y, dt);
-    } else if (this.phase === 'aim') {
+    } else if (this.phase === 'aim' && !this.tac) {
       const W = WEAPONS[this.weapon];
       const fine = (inp.fine ? 0.25 : 1) * (this.cam.fov / 55);
       // quadratische Kennlinie: kleine Ausschläge = feines Zielen
@@ -1857,16 +2023,55 @@ export class Game {
         this.settleT += dt;
         if (this.settleT > 0.6) this.afterResolve();
       } else this.settleT = 0;
-      if (this.resolveT > 25) this.afterResolve();
+      // Sicherheitsnetz: nach zu langer Wartezeit aufräumen und weitermachen
+      if (this.resolveT > 18) {
+        this.forceSettle();
+        this.afterResolve();
+      }
     } else if (this.settleCb) {
-      if (this.isSettled()) {
-        this.settleT2 += dt;
-        if (this.settleT2 > 0.5) {
-          const cb = this.settleCb;
-          this.settleCb = null;
-          cb();
-        }
-      } else this.settleT2 = 0;
+      this.settleWait = (this.settleWait || 0) + dt;
+      const settled = this.isSettled();
+      if (settled) this.settleT2 += dt; else this.settleT2 = 0;
+      if (this.settleT2 > 0.5 || this.settleWait > 12) {
+        if (!settled) this.forceSettle();
+        const cb = this.settleCb;
+        this.settleCb = null;
+        this.settleWait = 0;
+        cb();
+      }
+    }
+  }
+
+  // Alles, was noch fliegt, fährt oder summt, ohne Folgen beenden
+  forceSettle() {
+    this.addLog('  Sicherheitsnetz: aufgeräumt');
+    for (const p of this.projectiles) p.remove();
+    this.projectiles = [];
+    for (const t of this.tnts) this.scene.remove(t.mesh);
+    this.tnts = [];
+    for (const tr of this.tractors) this.scene.remove(tr.mesh);
+    this.tractors = [];
+    this.swarms = [];
+    for (const pl of this.planes) this.scene.remove(pl.mesh);
+    this.planes = [];
+    for (const m of this.mines) if (m.trig > 0) { m.trig = -1; m.mesh.visible = true; }
+    this.busy = 0;
+    if (this.waterAnim) {
+      this.world.setWaterLevel(this.waterAnim.to);
+      this.waterAnim = null;
+      this.terrain.refreshColors();
+    }
+    for (const u of this.units) {
+      if (u.alive) {
+        u.scripted = null;
+        u.slide.set(0, 0, 0);
+        u.vel.set(0, 0, 0);
+        u.onGround = true;
+        u.pos.y = this.terrain.heightAt(u.pos.x, u.pos.z);
+        u.model.chute.visible = false;
+      } else {
+        u.deathT = Math.max(u.deathT, 3);
+      }
     }
   }
 
@@ -1926,6 +2131,9 @@ export class Game {
         c.setMode('overview', null, { keepTarget: true });
         if (u) c.goal.copy(u.pos);
       }
+    } else if (this.tac && u && u.alive && ph === 'aim') {
+      c.tc = this.tac;
+      this.wantCam('tactical', u);
     } else if (u && u.alive && u.aiming && (ph === 'aim' || ph === 'ai')) {
       const W = WEAPONS[this.weapon];
       this.wantCam('aim', u, { ballistic: W.type === 'ballistic' || W.type === 'drive', sniper: !!W.zoom && ph === 'aim' });

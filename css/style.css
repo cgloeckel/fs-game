@@ -369,3 +369,6 @@ input[type=range] { width: 100%; accent-color: var(--gold); }
   font-size: 10px; font-weight: 900; padding: 1px 5px; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.5); white-space: nowrap;
 }
 .hud:not(.touch) .abtn.weapon[data-key]::after { top: -8px; right: -4px; }
+
+/* ---------- Desktop: Wurf-Ansicht mit Zielcursor ---------- */
+canvas.tac-cursor { cursor: url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='32' height='32'%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23000' stroke-width='4'/%3E%3Ccircle cx='16' cy='16' r='9' fill='none' stroke='%23fff' stroke-width='2'/%3E%3Cpath d='M16 1v8M16 23v8M1 16h8M23 16h8' stroke='%23000' stroke-width='4'/%3E%3Cpath d='M16 1v8M16 23v8M1 16h8M23 16h8' stroke='%23ff3b30' stroke-width='2'/%3E%3C/svg%3E") 16 16, crosshair; }

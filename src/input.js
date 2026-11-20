@@ -45,6 +45,16 @@ export class Input {
     });
     window.addEventListener('blur', () => this.keys.clear());
 
+    this.mouseX = -1;
+    this.mouseY = -1;
+    this.mouseMoved = 0;
+    window.addEventListener('pointermove', (e) => {
+      if (e.pointerType === 'mouse' && !this.locked) {
+        this.mouseMoved += Math.abs(e.clientX - this.mouseX) + Math.abs(e.clientY - this.mouseY);
+        this.mouseX = e.clientX;
+        this.mouseY = e.clientY;
+      }
+    });
     canvas.addEventListener('pointerdown', (e) => this.onDown(e));
     window.addEventListener('pointermove', (e) => this.onMove(e));
     window.addEventListener('pointerup', (e) => this.onUp(e));

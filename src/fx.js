@@ -123,6 +123,7 @@ const COL = {
   milk: C('#fffdf5'), water: C('#d8f0ff'), water2: C('#8fc4e6'), gas1: C('#7a8a2a'), gas2: C('#5a5a20'),
   heal: C('#7dff8a'), heal2: C('#2ecc40'), spark: C('#ffd27a'), leaf: C('#4f8a33'), straw: C('#e2c46a'),
   rock: C('#8a867e'), black: C('#151515'), gold: C('#ffd54f'), red: C('#ff3b30'),
+  wood: C('#7a4d28'), chimney: C('#d9d6d0'), chimney2: C('#eeece8'),
 };
 
 export class FX {
@@ -251,6 +252,19 @@ export class FX {
     this.add.spawn(p.x, p.y, p.z, 0, 0, 0, 0.08, 0.5, 0.2, COL.fire1, COL.fire2, 0.9);
   }
 
+  // Rauch aus dem Rauchfang, treibt mit dem Wind
+  chimney(x, y, z, wx, wz) {
+    this.norm.spawn(x + this.r(0.1), y, z + this.r(0.1), wx * 0.25 + this.r(0.1), 0.7 + Math.random() * 0.3, wz * 0.25 + this.r(0.1),
+      3 + Math.random() * 1.5, 0.35, 1.9, COL.chimney, COL.chimney2, 0.32, -0.05, 0.25);
+  }
+
+  // Federn/Staub, wenn ein Viech aufgescheucht wird
+  puff(p, color) {
+    for (let i = 0; i < 6 * this.mul; i++) {
+      this.norm.spawn(p.x + this.r(0.2), p.y + 0.2, p.z + this.r(0.2), this.r(1.2), Math.random() * 1.5, this.r(1.2), 0.5 + Math.random() * 0.4, 0.12, 0.05, color, color, 0.9, GRAVITY * 0.15, 2);
+    }
+  }
+
   sparkle(p, color = COL.spark) {
     this.add.spawn(p.x, p.y, p.z, this.r(0.4), 0.6, this.r(0.4), 0.4, 0.15, 0.02, color, color, 1);
   }
@@ -300,7 +314,8 @@ export class FX {
     const kind = o.kind;
     let c = COL.leaf;
     if (kind === 'rock') c = COL.rock;
-    else if (kind === 'bale') c = COL.straw;
+    else if (kind === 'bale' || kind === 'heumandl' || kind === 'vogelscheuche') c = COL.straw;
+    else if (kind === 'fass') c = COL.wood;
     else if (kind === 'silo') c = COL.white;
     this.spawnDebris(o.x, top * 0.5 + o.y0 * 0.5, o.z, c, 8, 5);
     for (let i = 0; i < 20 * this.mul; i++) {

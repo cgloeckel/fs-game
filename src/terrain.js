@@ -1,6 +1,6 @@
 // Heightmap-Insel mit Kratern, Vertex-Farben und schnellen Höhenabfragen.
 import * as THREE from 'three';
-import { makeNoise2D, fbm, hash2 } from './rng.js';
+import { makeNoise2D, fbm, hash2, RNG } from './rng.js';
 import { WORLD_SIZE } from './config.js';
 import { clamp, smoothstep } from './util.js';
 
@@ -14,10 +14,19 @@ export class Terrain {
     this.h = new Float32Array(res * res);
     this.scorch = new Float32Array(res * res);
     this.varN = new Float32Array(res * res);
+    this.varL = new Float32Array(res * res);
+    this.pathMask = new Float32Array(res * res);
+    this.decks = [];
+    this.path = [];
+    this.lake = null;
     this.waterLevel = 0;
     this.colors = {};
     for (const k in theme.colors) this.colors[k] = new THREE.Color(theme.colors[k]);
     this.generate(seed);
+    const rng = new RNG(seed * 13 + 5);
+    this.forestNoise = makeNoise2D(seed + 91);
+    if (theme.lake) this.carveLake(rng, theme.lake);
+    this.planPath(rng);
     this.buildMesh(lowQuality);
   }
 
@@ -34,9 +43,12 @@ export class Terrain {
         const x = -this.half + i * this.cell;
         const z = -this.half + j * this.cell;
         const nx = x / this.size, nz = z / this.size;
-        const wx = nx + 0.07 * n2(nx * 3.1, nz * 3.1);
-        const wz = nz + 0.07 * n2(nx * 3.1 + 5.2, nz * 3.1 + 5.2);
-        const d = Math.sqrt(wx * wx + wz * wz) * 2;
+        const wx = nx + 0.09 * n2(nx * 3.1, nz * 3.1);
+        const wz = nz + 0.09 * n2(nx * 3.1 + 5.2, nz * 3.1 + 5.2);
+        const ang = Math.atan2(wz, wx);
+        // Buchten und Halbinseln statt kreisrunder Insel
+        const cove = 1 + 0.16 * n3(Math.cos(ang) * 1.6 + 7.3, Math.sin(ang) * 1.6 + 2.1);
+        const d = Math.sqrt(wx * wx + wz * wz) * 2 * cove;
         const f = fbm(n1, wx * T.freq + 10, wz * T.freq + 10, T.oct);
         let hn = clamp(f * 0.75 + 0.5, 0, 1);
         let h = T.base + T.amp * Math.pow(hn, T.pow || 1.2);
@@ -57,9 +69,10 @@ export class Terrain {
           h = (fl + smoothstep(T.terraceSharp || 0.6, 1, k - fl)) * s;
         }
         const m = 1 - smoothstep(0.6, 0.95, d);
-        h = h * m + -5 * (1 - m);
+        h = h * m + -5.6 * (1 - m);
         this.h[this.idx(i, j)] = Math.max(-6, h);
         this.varN[this.idx(i, j)] = fbm(n2, nx * 14, nz * 14, 2) * 0.5 + 0.5;
+        this.varL[this.idx(i, j)] = fbm(n3, nx * 3.2 + 11, nz * 3.2 + 4, 3) * 0.5 + 0.5;
       }
     }
     // Zentrum garantiert begehbar: leicht anheben, falls zu tief
@@ -69,6 +82,25 @@ export class Terrain {
   }
 
   heightAt(x, z) {
+    const b = this.baseHeightAt(x, z);
+    if (this.decks.length) {
+      for (const dk of this.decks) {
+        const dx = x - dk.ax, dz = z - dk.az;
+        const s = (dx * dk.dx + dz * dk.dz) / dk.len;
+        if (s < 0 || s > 1) continue;
+        if (Math.abs(dx * -dk.dz + dz * dk.dx) > dk.hw) continue;
+        const y = this.deckY(dk, s);
+        if (y > b) return y;
+      }
+    }
+    return b;
+  }
+
+  deckY(dk, s) {
+    return dk.yA + (dk.yB - dk.yA) * s + dk.arch * Math.sin(Math.PI * s);
+  }
+
+  baseHeightAt(x, z) {
     const fx = (x + this.half) / this.cell;
     const fz = (z + this.half) / this.cell;
     const r = this.res;
@@ -109,11 +141,21 @@ export class Terrain {
     const hd = this.h[k - (j > 0 ? r : 0)], hu = this.h[k + (j < r - 1 ? r : 0)];
     const g = Math.sqrt((hr - hl) ** 2 + (hu - hd) ** 2) / (2 * this.cell);
     const v = this.varN[k];
+    const vl = this.varL[k];
     out.copy(C.grass1).lerp(C.grass2, clamp(v * 1.4 - 0.2, 0, 1));
+    if (C.grass3) out.lerp(C.grass3, smoothstep(0.55, 0.85, vl) * 0.75);
+    if (C.forest && this.forestNoise) {
+      const x = -this.half + i * this.cell, z = -this.half + j * this.cell;
+      const f = this.forestAt(x, z);
+      if (f > 0) out.lerp(C.forest, f * 0.75);
+    }
     if (T.rockBias && h > 3) out.lerp(C.rock, clamp((h - 3) / 8, 0, 1) * T.rockBias + v * 0.1);
     if (h < wl + 0.9) out.lerp(C.sand, clamp(1 - (h - wl - 0.15) / 0.75, 0, 1));
+    const pm = this.pathMask[k];
+    if (pm > 0 && C.path && h > wl + 0.15) out.lerp(C.path, pm * (0.8 + v * 0.2));
+    if (C.foam && h > wl - 0.12 && h < wl + 0.2) out.lerp(C.foam, 0.4 * (1 - Math.abs(h - wl - 0.04) / 0.16) * (0.6 + v * 0.4));
     if (h < wl - 0.4) out.copy(C.sand).lerp(C.seabed, clamp((wl - 0.4 - h) / 2.5, 0, 1));
-    if (g > 0.6) out.lerp(C.rock, smoothstep(0.6, 1.1, g));
+    if (g > 0.85) out.lerp(C.rock, smoothstep(0.85, 1.45, g));
     if (h > T.snowLine && g < 1.1) out.lerp(C.snow, smoothstep(T.snowLine, T.snowLine + 2.5, h));
     const s = this.scorch[k];
     if (s > 0) out.lerp(C.dirt, s);
@@ -122,6 +164,160 @@ export class Terrain {
     out.g = Math.max(0, out.g + hv);
     out.b = Math.max(0, out.b + hv);
     return out;
+  }
+
+  // 0..1: wie dicht hier Wald steht (Waldinseln statt Streubäume)
+  forestAt(x, z) {
+    if (!this.forestNoise) return 0;
+    const f = fbm(this.forestNoise, x / this.size * 3.3 + 20, z / this.size * 3.3 + 20, 3);
+    const thr = this.theme.forest !== undefined ? this.theme.forest : 0.15;
+    return smoothstep(thr, thr + 0.18, f);
+  }
+
+  // Bergsee in die Insel graben (ringsum Land), optional mit Brücke
+  carveLake(rng, L) {
+    const r = this.res;
+    const wl = this.waterLevel;
+    let best = null, bestScore = Infinity;
+    for (let t = 0; t < 90; t++) {
+      const cx = rng.range(-this.size * 0.24, this.size * 0.24);
+      const cz = rng.range(-this.size * 0.24, this.size * 0.24);
+      const h0 = this.baseHeightAt(cx, cz);
+      if (h0 < 1.2 || h0 > this.theme.base + this.theme.amp * 0.75) continue;
+      let ok = true, sum = 0;
+      for (let a = 0; a < 16 && ok; a++) {
+        const ang = (a / 16) * Math.PI * 2;
+        const hr = this.baseHeightAt(cx + Math.cos(ang) * (L.r + 7), cz + Math.sin(ang) * (L.r + 7));
+        if (hr < wl + 1) ok = false;
+        sum += hr;
+      }
+      if (!ok) continue;
+      // lieber in a Mulde als auf an Buckel
+      const score = sum / 16 + Math.hypot(cx, cz) * 0.02 + rng.next() * 0.6;
+      if (score < bestScore) { bestScore = score; best = { x: cx, z: cz }; }
+    }
+    if (!best) return;
+    const n = makeNoise2D(Math.floor(rng.next() * 1e6));
+    const R = L.r, D = L.depth;
+    // sanfte Wiesenmulde mit kurzem Uferstreifen
+    const profile = (d) => {
+      if (d < R) return wl - 0.05 - D * (1 - (d / R) * (d / R));
+      const e = d - R;
+      return wl - 0.05 + 0.9 * (1 - Math.exp(-e / 1.4)) + e * 0.2 + e * e * 0.005;
+    };
+    const smin = (a, b, k) => {
+      const hh = Math.max(k - Math.abs(a - b), 0) / k;
+      return Math.min(a, b) - hh * hh * k * 0.25;
+    };
+    for (let j = 0; j < r; j++) {
+      for (let i = 0; i < r; i++) {
+        const x = -this.half + i * this.cell, z = -this.half + j * this.cell;
+        const dx = x - best.x, dz = z - best.z;
+        let d = Math.sqrt(dx * dx + dz * dz);
+        if (d > R + 34) continue;
+        const ang = Math.atan2(dz, dx);
+        d *= 1 + 0.13 * n(Math.cos(ang) * 1.3 + 3, Math.sin(ang) * 1.3 + 3);
+        const k = j * r + i;
+        if (this.h[k] < wl - 0.5) continue;
+        this.h[k] = smin(this.h[k], profile(d), 1.2);
+      }
+    }
+    this.lake = { x: best.x, z: best.z, r: L.r };
+    this.planBridge(rng);
+  }
+
+  planBridge(rng) {
+    const lk = this.lake;
+    for (let tries = 0; tries < 8; tries++) {
+      const a = rng.range(0, Math.PI * 2);
+      const dx = Math.cos(a), dz = Math.sin(a);
+      const bank = (sgn) => {
+        for (let s = 1; s < 40; s += 0.5) {
+          const x = lk.x + dx * s * sgn, z = lk.z + dz * s * sgn;
+          if (this.baseHeightAt(x, z) > this.waterLevel + 0.55) return { x: x + dx * 1.3 * sgn, z: z + dz * 1.3 * sgn };
+        }
+        return null;
+      };
+      const A = bank(-1), B = bank(1);
+      if (!A || !B) continue;
+      const len = Math.hypot(B.x - A.x, B.z - A.z);
+      if (len < 8 || len > 34) continue;
+      const yA = this.baseHeightAt(A.x, A.z) + 0.1, yB = this.baseHeightAt(B.x, B.z) + 0.1;
+      if (Math.abs(yA - yB) > 2.5) continue;
+      const dk = { ax: A.x, az: A.z, bx: B.x, bz: B.z, len, dx: (B.x - A.x) / len, dz: (B.z - A.z) / len, hw: 1.15, yA, yB, arch: 0 };
+      const mid = (yA + yB) / 2;
+      dk.arch = Math.max(Math.min(1.4, len * 0.06), this.waterLevel + 1.0 - mid);
+      this.decks.push(dk);
+      return;
+    }
+  }
+
+  // Feldweg über die Insel (wenn möglich über die Brücke)
+  planPath(rng) {
+    const land = (x, z) => this.baseHeightAt(x, z) > this.waterLevel + 0.8;
+    const pts = [];
+    const outward = (px, pz, dirx, dirz) => {
+      for (let L = 26; L > 6; L -= 2) {
+        const x = px + dirx * L, z = pz + dirz * L;
+        if (land(x, z) && Math.hypot(x, z) < this.half * 0.8) return { x, z };
+      }
+      return null;
+    };
+    if (this.decks.length) {
+      const dk = this.decks[0];
+      const a = outward(dk.ax, dk.az, -dk.dx + rng.range(-0.4, 0.4), -dk.dz + rng.range(-0.4, 0.4));
+      const b = outward(dk.bx, dk.bz, dk.dx + rng.range(-0.4, 0.4), dk.dz + rng.range(-0.4, 0.4));
+      if (a) pts.push(a);
+      pts.push({ x: dk.ax, z: dk.az }, { x: dk.bx, z: dk.bz, bridge: true });
+      if (b) pts.push(b);
+    } else {
+      const ang = rng.range(0, Math.PI * 2);
+      const a = outward(0, 0, Math.cos(ang), Math.sin(ang));
+      const b = outward(0, 0, -Math.cos(ang), -Math.sin(ang));
+      if (a) pts.push(a);
+      pts.push({ x: 0, z: 0 });
+      if (b) pts.push(b);
+    }
+    // sanft geschwungen: Zwischenpunkte mit seitlichem Versatz
+    const path = [];
+    for (let i = 0; i < pts.length - 1; i++) {
+      const p = pts[i], q = pts[i + 1];
+      path.push(p);
+      if (q.bridge) continue;
+      const len = Math.hypot(q.x - p.x, q.z - p.z);
+      const nx = -(q.z - p.z) / (len || 1), nz = (q.x - p.x) / (len || 1);
+      const steps = Math.floor(len / 5);
+      const wob = rng.range(-1, 1);
+      for (let k = 1; k < steps; k++) {
+        const t = k / steps;
+        const off = Math.sin(t * Math.PI) * wob * len * 0.12;
+        path.push({ x: p.x + (q.x - p.x) * t + nx * off, z: p.z + (q.z - p.z) * t + nz * off });
+      }
+    }
+    path.push(pts[pts.length - 1]);
+    this.path = path;
+    const r = this.res;
+    for (let j = 0; j < r; j++) {
+      for (let i = 0; i < r; i++) {
+        const x = -this.half + i * this.cell, z = -this.half + j * this.cell;
+        const d = this.distToPath(x, z);
+        if (d < 2.2) this.pathMask[j * r + i] = (1 - smoothstep(0.7, 1.9, d)) * (0.85 + hash2(i * 3, j * 7) * 0.15);
+      }
+    }
+  }
+
+  distToPath(x, z) {
+    let best = Infinity;
+    const P = this.path;
+    for (let i = 0; i < P.length - 1; i++) {
+      const a = P[i], b = P[i + 1];
+      const vx = b.x - a.x, vz = b.z - a.z;
+      const l2 = vx * vx + vz * vz || 1;
+      const t = clamp(((x - a.x) * vx + (z - a.z) * vz) / l2, 0, 1);
+      const d = Math.hypot(x - a.x - vx * t, z - a.z - vz * t);
+      if (d < best) best = d;
+    }
+    return best;
   }
 
   buildMesh(lowQuality) {
