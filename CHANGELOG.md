@@ -2,6 +2,23 @@
 
 Jedes Deployment erhöht die Patch-Version (1.0.4 → 1.0.5 …). Große Updates erhöhen die Minor-Version (1.1.0).
 
+## v1.2.0 – 21.11.2026 · Stellungsbau-Update
+**Neue Fähigkeiten**
+- 🛖 Bretterverschlag (Pioniere, Helden): baut sich rund ums Rindsviech, schluckt Kugeln und 60 % vom Explosionsschaden, bis er z'sammfällt (90 Punkte, das Dach fliegt vorher weg). Rausschießen geht, reingehen kann a jeder
+- ⛏️ Eingraben (jedes Viech, 2× pro Gefecht): nur mehr Schädl und Hörner schaun raus – halber Explosionsschaden, kaum Rückstoß, Kugeln treffen nur den Kopf. Wer weggeht, steigt aus
+- 🕳️ Maulwurfgang (Pioniere, Jäger): unterirdisch zum Zielpunkt graben, mit Maulwurfhügeln als Spur, danach no schießen
+- Der CPU-Gegner gräbt sich ein oder baut an Verschlag, wenn er grad nix treffen kann, und bleibt dann gern in Deckung
+
+**Gefecht**
+- Kartengröße wählbar: klein, mittel, groß
+- Fraktionen stehen standardmäßig auf 🎲 Zufall (nie mehr automatisch Tirol als Gegner)
+- Neue Fraktion: Waldviertler Mohnzuzler
+- Ausdauer reicht 25 % weiter
+
+**Kleinigkeiten**
+- Waffen-Button überlappt nimmer mit „Wechseln“
+- Beim Bauen, Graben und Essen bleibt die Kamera hinterm Viech
+
 ## v1.1.0 – 20.11.2026 · Großes Landschafts-Update
 **Neue Inseln**
 - Harmonischere Landschaften: buchtige Inselformen, weichere Farbverläufe, Wäldchen mit Lichtungen statt Baum-Streusel

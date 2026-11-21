@@ -46,6 +46,9 @@ export const LINES = {
   stung: ['Au! Wespen! Hilfe!', 'Mei Nasn schwillt an!', 'Weg mit eich, es Viecher!', 'I bin allergisch, du Hirsch!'],
   gabel: ['Ab aufn Misthaufen mit dir!', 'Drei Zinken, ka Gnade!'],
   blunder: ['Hoppala, da Huf is abgrutscht!', 'Wer hat ma Butter auf die Hufe gschmiert?', 'Des wor jetzt nix.', 'I hob die Brilln im Stall vergessn.', 'Da Wind, i schwör, des wor da Wind!', 'Bitte ned filmen.'],
+  build: ['Bretter, Nägel, fertig is die Villa!', 'Mei Verschlag, mei Burg.', 'Do kummt kana eine ohne Klopfen!', 'Baumeister Muh hat gsprochen.', 'Ois selber gmacht, wia da Papa.'],
+  dig: ['I bin dann amoi weg. Unten.', 'Wia a Erdäpfel im Acker!', 'Nur mehr de Hörner schaun raus.', 'Do find mi kana.', 'Gemütlich is des Loch.'],
+  tunnel: ['Da Maulwurf is ma Vorbild!', 'Bis glei, oben!', 'Unterirdisch, aber ned unterbelichtet!', 'Wer grabt, der findt.'],
   dud: ['Da Abfangjäger hat Startverbot. Leider nix.', 'Da Pilot is im Krankenstand.', 'Ka Budget fürs Kerosin.'],
 };
 

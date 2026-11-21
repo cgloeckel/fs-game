@@ -1,6 +1,6 @@
 // Menüs: Titel, Feldzug, Kaserne, Briefing, Gefecht, Einstellungen, Anleitung, Ergebnisse.
 import {
-  FACTIONS, factionById, MISSIONS, THEMES, THEME_ORDER, BRANCHES, RANKS, TIER_HP, PROMO_COST, DIFFICULTY,
+  FACTIONS, factionById, MISSIONS, THEMES, THEME_ORDER, MAP_SIZES, BRANCHES, RANKS, TIER_HP, PROMO_COST, DIFFICULTY,
   unitTitle, WEAPONS, loadoutFor, WEAPON_ORDER,
 } from './config.js';
 import {
@@ -20,15 +20,20 @@ export class Menus {
     this.root = el('div', 'menus');
     root.appendChild(this.root);
     this.skirmish = {
+      sv: 2,
       teams: [
-        { faction: 'noe', control: 'human', difficulty: 'normal', units: 4 },
-        { faction: 'tirol', control: 'cpu', difficulty: 'normal', units: 4 },
+        { faction: 'random', control: 'human', difficulty: 'normal', units: 4 },
+        { faction: 'random', control: 'cpu', difficulty: 'normal', units: 4 },
       ],
-      theme: 'random', ranks: 'mixed', wind: 0.45, turnTime: 60, crates: true, mines: false, water: false, fog: false,
+      theme: 'random', mapSize: 'mittel', ranks: 'mixed', wind: 0.45, turnTime: 60, crates: true, mines: false, water: false, fog: false,
     };
     try {
       const s = JSON.parse(localStorage.getItem('rindsviecher_skirmish') || 'null');
-      if (s && s.teams) this.skirmish = { ...this.skirmish, ...s };
+      if (s && s.teams) {
+        // alte Einstellungen (vor v1.2): fixe Fraktionen NÖ gegen Tirol → auf Zufall stellen
+        if (!s.sv) s.teams.forEach((t) => { t.faction = 'random'; });
+        this.skirmish = { ...this.skirmish, ...s, sv: 2 };
+      }
     } catch (e) { /* egal */ }
   }
 
@@ -317,7 +322,9 @@ export class Menus {
   skirmishSetup() {
     const k = this.skirmish;
     const used = k.teams.map((t) => t.faction);
-    const factionOpts = (cur) => FACTIONS.map((f) => `<option value="${f.id}"${f.id === cur ? ' selected' : ''}>${esc(f.name)}</option>`).join('');
+    const factionOpts = (cur) => `<option value="random"${cur === 'random' ? ' selected' : ''}>🎲 Zufall</option>`
+      + FACTIONS.map((f) => `<option value="${f.id}"${f.id === cur ? ' selected' : ''}>${esc(f.name)}</option>`).join('');
+    const swatch = (id) => (id === 'random' ? 'background:conic-gradient(#e53935,#fdd835,#43a047,#1e88e5,#8e24aa,#e53935)' : `background:${factionById(id).color}`);
     const ctrlOpts = (t) => [['human', 'Mensch'], ['easy', 'CPU leicht'], ['normal', 'CPU normal'], ['hard', 'CPU schwer']]
       .map(([v, n]) => `<option value="${v}"${(t.control === 'human' ? 'human' : t.difficulty) === v ? ' selected' : ''}>${n}</option>`).join('');
     const opt = (list, cur) => list.map(([v, n]) => `<option value="${v}"${String(cur) === String(v) ? ' selected' : ''}>${n}</option>`).join('');
@@ -326,7 +333,7 @@ export class Menus {
         <h2>Schnelles Gefecht</h2>
         <div class="teams-setup">
           ${k.teams.map((t, i) => `<div class="trow" data-i="${i}">
-            <span class="sw" style="background:${factionById(t.faction).color}"></span>
+            <span class="sw" style="${swatch(t.faction)}"></span>
             <select data-k="faction">${factionOpts(t.faction)}</select>
             <select data-k="control">${ctrlOpts(t)}</select>
             <select data-k="units">${opt([2, 3, 4, 5, 6].map((n) => [n, `${n} Viecher`]), t.units)}</select>
@@ -336,6 +343,7 @@ export class Menus {
         </div>
         <div class="opts">
           <label>Gelände<select data-o="theme">${opt([['random', 'Zufall'], ...THEME_ORDER.map((t) => [t, THEMES[t].name])], k.theme)}</select></label>
+          <label>Kartengröße<select data-o="mapSize">${opt(Object.entries(MAP_SIZES).map(([id, m]) => [id, m.name]), k.mapSize || 'mittel')}</select></label>
           <label>Dienstgrade<select data-o="ranks">${opt([['rekrut', 'Nur Rekruten'], ['mixed', 'Gemischt'], ['veteran', 'Veteranen'], ['hero', 'Helden']], k.ranks)}</select></label>
           <label>Wind<select data-o="wind">${opt([[0, 'Windstill'], [0.25, 'Schwach'], [0.45, 'Mittel'], [0.7, 'Stark'], [1, 'Föhnsturm']], k.wind)}</select></label>
           <label>Rundenzeit<select data-o="turnTime">${opt([[30, '30 s'], [45, '45 s'], [60, '60 s'], [90, '90 s'], [9999, 'Unbegrenzt']], k.turnTime)}</select></label>
@@ -370,8 +378,7 @@ export class Menus {
     const add = s.querySelector('[data-a="add"]');
     if (add) {
       add.onclick = () => {
-        const free = FACTIONS.find((f) => !used.includes(f.id));
-        k.teams.push({ faction: free.id, control: 'cpu', difficulty: 'normal', units: 4 });
+        k.teams.push({ faction: 'random', control: 'cpu', difficulty: 'normal', units: 4 });
         this.skirmishSetup();
       };
     }
@@ -384,7 +391,7 @@ export class Menus {
     });
     s.querySelector('[data-a="back"]').onclick = () => this.title();
     s.querySelector('[data-a="go"]').onclick = () => {
-      const fs = k.teams.map((t) => t.faction);
+      const fs = k.teams.map((t) => t.faction).filter((f) => f !== 'random');
       if (new Set(fs).size !== fs.length) {
         this.app.toastMenu('Zwa Teams mit derselben Fraktion geht ned. Bitte unterschiedliche wählen.');
         return;
@@ -410,7 +417,11 @@ export class Menus {
     };
     const humans = k.teams.filter((t) => t.control === 'human').length;
     let hn = 0;
-    const teams = k.teams.map((t) => {
+    // „Zufall“ zieht aus den Fraktionen, die noch keiner fix gewählt hat
+    const fixed = new Set(k.teams.map((t) => t.faction).filter((f) => f !== 'random'));
+    const pool = rng.shuffle(FACTIONS.map((f) => f.id).filter((id) => !fixed.has(id)));
+    const teams = k.teams.map((t0) => {
+      const t = { ...t0, faction: t0.faction === 'random' ? pool.pop() : t0.faction };
       const soldiers = [];
       const tiers = [];
       for (let i = 0; i < t.units; i++) tiers.push(tierFor());
@@ -425,7 +436,7 @@ export class Menus {
     return {
       mode: 'skirmish', theme, seed, title: 'Schnelles Gefecht', teams,
       rules: {
-        wind: k.wind, turnTime: k.turnTime, crates: k.crates, mines: k.mines ? 12 : 0, risingWater: k.water ? 0.3 : 0, fog: k.fog,
+        wind: k.wind, turnTime: k.turnTime, crates: k.crates, mines: k.mines ? 12 : 0, risingWater: k.water ? 0.3 : 0, fog: k.fog, mapSize: k.mapSize || 'mittel',
         maibaum: k.mines, maxRounds: 40,
       },
     };
@@ -507,6 +518,12 @@ export class Menus {
           <li>Granate, Panzerfaust, Mörser &amp; Co.: <b>Maus aufs Ziel zeigen</b>, <b>Klick</b> = Wurf – Winkel, Kraft und Wind rechnet das Spiel · <b>W/S</b> Bogen hoch/flach · <b>Mausrad</b> Zoom · <b>A/D</b> Ansicht drehen</li>
           <li><b>M</b> Karte · <b>X</b> Zug beenden · <b>P</b>/<b>Esc</b> Pause</li>
         </ul>
+        <h3>Stellungsbau</h3>
+        <ul>
+          <li>⛏️ <b>Eingraben</b> (jedes Viech, 2× pro Gefecht): Nur mehr Schädl und Hörner schaun raus. Explosionen machen halben Schaden und schleudern di kaum weg, Kugeln treffen nur mehr den Kopf. Schießen geht weiter – wer weggeht, steigt aus.</li>
+          <li>🛖 <b>Bretterverschlag</b> (Pioniere, Helden): Baut si rund um dein Viech. Die Bretter schlucken Kugeln und 60 % vom Explosionsschaden, bis da Verschlag z'sammfällt (90 Punkte, das Dach fliegt vorher weg). Rausschießen geht, reingehen kann a jeder.</li>
+          <li>🕳️ <b>Maulwurfgang</b> (Pioniere, Jäger): Zielpunkt im Kreis antippen, unterirdisch hingraben, danach no schießen. Unterm Wasser durch geht's ned.</li>
+        </ul>
         <h3>Dienstgrade &amp; Beförderung</h3>
         <p>Jeder fängt als <b>Rekrut</b> an. Mit Punkten aus den Einsätzen wird befördert: ${RANKS.join(' → ')}. Bei der ersten Beförderung wählst du die Laufbahn:</p>
         <ul>${Object.values(BRANCHES).map((b) => `<li>${b.icon} <b>${esc(b.name)}</b> (${esc(b.titles.join(' → '))}): ${esc(b.desc)}</li>`).join('')}</ul>
@@ -518,6 +535,7 @@ export class Menus {
           <li>Kisten vom Himmel: 🥨 = Brettljause (Lebenspunkte), grüne Kiste = Munition. Manchmal is a Falle drin.</li>
           <li>Kuhfladen-Minen werden erst in der nächsten Runde scharf. Echte Kuhfladen nie.</li>
           <li>Krater verändern das Gelände – nutz das!</li>
+          <li>Bei „Schnelles Gefecht“ kannst die <b>Kartengröße</b> wählen: klein für schnelle Raufereien, groß für Taktik-Feinspitze.</li>
         </ul>
         <div class="btns"><button class="btn primary" data-a="back">Alles klar</button></div>
       </div>`);

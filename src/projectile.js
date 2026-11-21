@@ -39,7 +39,8 @@ export function stepProjectile(s, W, env) {
     const u = units[i];
     if (!u.alive) continue;
     if (u === env.owner && s.t < 0.35) continue;
-    const dx = nx - u.pos.x, dy = ny - (u.pos.y + 0.95), dz = nz - u.pos.z;
+    if (u.scripted && u.scripted.tunnel) continue;
+    const dx = nx - u.pos.x, dy = ny - (u.pos.y + 0.95 - (u.digDepth || 0)), dz = nz - u.pos.z;
     if (dx * dx + dy * dy * 0.4 + dz * dz < 0.36) {
       if (W.impact) {
         s.x = nx; s.y = ny; s.z = nz;
@@ -62,6 +63,8 @@ export function stepProjectile(s, W, env) {
     const o = obs[i];
     if (!o.solid) continue;
     if (ny > o.top || ny < o.y0) continue;
+    // aus dem eigenen Verschlag rausschießen geht
+    if (o.shed && s.x0 !== undefined && (s.x0 - o.x) * (s.x0 - o.x) + (s.z0 - o.z) * (s.z0 - o.z) < o.pr * o.pr) continue;
     const dx = nx - o.x, dz = nz - o.z;
     if (dx * dx + dz * dz < o.pr * o.pr) {
       if (W.impact) {
@@ -113,7 +116,7 @@ export function stepProjectile(s, W, env) {
 
 // Komplette Flugbahn simulieren (für KI und Zielvorschau)
 export function simulate(W, origin, vel, env, maxT = 9, path = null) {
-  const s = { x: origin.x, y: origin.y, z: origin.z, vx: vel.x, vy: vel.y, vz: vel.z, t: 0, rest: false };
+  const s = { x: origin.x, y: origin.y, z: origin.z, x0: origin.x, z0: origin.z, vx: vel.x, vy: vel.y, vz: vel.z, t: 0, rest: false };
   const steps = Math.ceil(maxT / PSTEP);
   for (let i = 0; i < steps; i++) {
     const r = stepProjectile(s, W, env);
@@ -130,7 +133,7 @@ export class Projectile {
     this.wid = wid;
     this.owner = owner;
     this.opts = opts;
-    this.s = { x: pos.x, y: pos.y, z: pos.z, vx: vel.x, vy: vel.y, vz: vel.z, t: 0, rest: false };
+    this.s = { x: pos.x, y: pos.y, z: pos.z, x0: pos.x, z0: pos.z, vx: vel.x, vy: vel.y, vz: vel.z, t: 0, rest: false };
     this.mesh = new THREE.Mesh(itemGeometry(opts.mesh || W.mesh || 'granate'), materials().item);
     this.mesh.castShadow = true;
     if (opts.scale) this.mesh.scale.setScalar(opts.scale);

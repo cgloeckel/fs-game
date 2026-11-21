@@ -168,14 +168,15 @@ export class HUD {
     show('switch', mv && game.canSwitch && game.team.units.filter((u) => u.alive).length > 1);
     show('jump', mv || ret);
     show('endTurn', mv);
-    show('nextTarget', aim && W && W.type !== 'heal' && W.type !== 'place');
+    show('nextTarget', aim && W && !['heal', 'place', 'build', 'dig'].includes(W.type));
     show('back', aim || tgt);
     show('aim', mv);
     show('fire', aim || (tgt && !!game.targetPoint));
     show('overview', mv || aim);
     const fireBtn = r.querySelector('[data-cmd="fire"] span');
     if (fireBtn && W) {
-      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.type === 'jump' ? 'Spring!' : W.type === 'drive' ? 'Los!' : (W.type === 'ballistic' && this.touch) ? 'Tipp/Halten' : 'Feuer';
+      fireBtn.textContent = W.type === 'heal' ? 'Essen' : W.type === 'place' ? 'Legen' : W.tunnel ? 'Grabn!' : W.type === 'jump' ? 'Spring!'
+        : W.type === 'drive' ? 'Los!' : W.type === 'build' ? 'Baun!' : W.type === 'dig' ? 'Eingrabn' : (W.type === 'ballistic' && this.touch) ? 'Tipp/Halten' : 'Feuer';
     }
     r.querySelector('.joy').classList.toggle('off', !(mv || aim || ret) || game.overview);
     this.updateWeaponButton(game);
@@ -209,7 +210,9 @@ export class HUD {
       const W = WEAPONS[game.weapon];
       const locked = this.app.input.locked;
       const mouse = locked ? '<b>Maus</b> zielen · ' : '<b>Klick ins Bild</b> = Maus fangen · ';
-      t = W.type === 'ballistic'
+      t = W.type === 'build' || W.type === 'dig'
+        ? `<b>Linksklick</b> oder <b>F</b> = ${W.type === 'build' ? 'Verschlag aufstellen (wo du stehst)' : 'eingraben (wo du stehst)'} · <b>Rechtsklick/Esc</b> zurück`
+        : W.type === 'ballistic'
         ? `${mouse}<b>Linksklick</b> Feuer (Kreis = Einschlag) · <b>halten</b> = Kraft selbst laden · <b>Mausrad</b> Kraft · <b>E</b> nächstes Ziel · <b>Shift</b> fein · <b>Rechtsklick/Esc</b> zurück`
         : `${mouse}<b>Linksklick</b> Feuer · <b>E</b> nächstes Ziel · <b>Shift</b> fein · <b>Rechtsklick/Esc</b> zurück · <b>A/D W/S</b> geht a`;
     } else if (human && ph === 'target') t = '<b>Klick</b> aufs Ziel · nochmal klicken oder <b>Leertaste</b> = Feuer · Maus ziehen = Karte schieben · <b>Esc</b> zurück';
@@ -356,11 +359,13 @@ export class HUD {
     }
     // Einheitskarte
     if (u) {
-      const k = `${u.uid}|${Math.round(u.hp)}|${Math.round(u.stamina)}`;
+      const shed = game.forts && game.forts.shedFor(u);
+      const k = `${u.uid}|${Math.round(u.hp)}|${Math.round(u.stamina)}|${u.dug ? 1 : 0}|${shed ? Math.round(shed.hp) : -1}`;
       if (this.last.uc !== k) {
         this.last.uc = k;
         this.$('.uc-name').innerHTML = `<span class="sw" style="background:${u.team.color}"></span>${esc(RANKS[u.s.tier])} ${esc(u.s.name)}`;
-        this.$('.uc-title').textContent = `${unitTitle(u.s)} · ${u.isStier ? 'Stier' : 'Kuh'}`;
+        const cover = shed ? ` · 🛖 Verschlag ${Math.max(0, Math.round(shed.hp))}/${shed.hpMax}` : u.dug ? ' · ⛏️ eingegraben' : '';
+        this.$('.uc-title').textContent = `${unitTitle(u.s)} · ${u.isStier ? 'Stier' : 'Kuh'}${cover}`;
         const hp = Math.max(0, u.hp);
         this.$('.uc-bar.hp i').style.width = `${(hp / u.hpMax) * 100}%`;
         this.$('.uc-bar.hp span').textContent = `${Math.round(hp)} / ${u.hpMax}`;

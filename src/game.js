@@ -7,7 +7,8 @@ import { Unit } from './unit.js';
 import { Projectile, simulate } from './projectile.js';
 import { AI } from './ai.js';
 import { RNG } from './rng.js';
-import { THEMES, WEAPONS, STAMINA_PER_M, WALK_SPEED, CRATE_WEAPONS, factionById, GRAVITY, FACTIONS } from './config.js';
+import { THEMES, WEAPONS, STAMINA_PER_M, WALK_SPEED, CRATE_WEAPONS, factionById, GRAVITY, FACTIONS, MAP_SIZES, WORLD_SIZE } from './config.js';
+import { Forts } from './fort.js';
 import { itemGeometry, materials } from './models.js';
 import { line, pick, ANNOUNCE } from './text.js';
 import { clamp, dist2D, DEG } from './util.js';
@@ -18,7 +19,7 @@ const V3 = THREE.Vector3;
 const NOOP_HUD = new Proxy({}, { get: () => () => {} });
 const DSTEP = 1 / 30;
 // Kuhglocken-Ton je Fraktion
-const TEAM_BELL = [1, 1.12, 0.89, 1.26, 0.84, 1.19, 0.94, 1.06, 0.79];
+const TEAM_BELL = [1, 1.12, 0.89, 1.26, 0.84, 1.19, 0.94, 1.06, 0.79, 1.33];
 const SWARM_A = new THREE.Color('#1a1a1a');
 const SWARM_B = new THREE.Color('#f2c400');
 const SMOKE_D = new THREE.Color('#3a3a3a');
@@ -78,20 +79,24 @@ export class Game {
     this.log = [];
     this.turnCount = 0;
 
+    const ms = MAP_SIZES[this.rules.mapSize] || MAP_SIZES.mittel;
+    this.mapScale = ms.size / WORLD_SIZE;
     this.world = new World(this.scene, this.theme, opts.seed || 1, app.quality, {
-      fog: this.rules.fog, maibaum: this.rules.maibaum, planSpawns: (t) => this.planSpawns(t),
+      fog: this.rules.fog, maibaum: this.rules.maibaum, planSpawns: (t) => this.planSpawns(t), size: ms.size,
     });
+    this.forts = new Forts(this);
     this.terrain = this.world.terrain;
     this.fx = new FX(this.scene, app.quality);
     this.fx.terrain = this.terrain;
     this.cam = new CameraRig(app.aspect());
     this.cam.terrain = this.terrain;
+    this.cam.worldScale = this.mapScale;
     this.env = { terrain: this.terrain, wind: this.wind, units: this.units, obstacles: this.world.obstacles, grid: this.world.obstacleGrid, waterLevel: 0, owner: null };
     this.envCalm = { ...this.env, wind: { x: 0, z: 0 } };
     this.createTeams();
     this.life = new Life(this, opts.seed || 1);
     this.createMarkers();
-    if (this.rules.mines) this.scatterMines(this.rules.mines);
+    if (this.rules.mines) this.scatterMines(Math.round(this.rules.mines * this.mapScale * this.mapScale));
   }
 
   // --- Aufbau -------------------------------------------------------------
@@ -106,7 +111,7 @@ export class Game {
     const avoid = [];
     const anyLand = () => {
       for (let i = 0; i < 400; i++) {
-        const x = rng.range(-40, 40), z = rng.range(-40, 40);
+        const x = rng.range(-40, 40) * this.mapScale, z = rng.range(-40, 40) * this.mapScale;
         if (T.heightAt(x, z) > T.waterLevel + 0.8) return { x, z };
       }
       return { x: 0, z: 0 };
@@ -135,13 +140,13 @@ export class Game {
         const x = rng.range(-T.half * 0.8, T.half * 0.8), z = rng.range(-T.half * 0.8, T.half * 0.8);
         if (T.heightAt(x, z) < T.waterLevel + 0.9) continue;
         if (T.slopeAt(x, z) > 0.5) continue;
-        let minAll = 40, minEnemy = 40, minFriend = 40;
+        let minAll = 60, minEnemy = 60, minFriend = 60;
         for (const p of placed) {
           const d = dist2D(p.x, p.z, x, z);
           if (d < minAll) minAll = d;
           if (p.team === k) { if (d < minFriend) minFriend = d; } else if (d < minEnemy) minEnemy = d;
         }
-        let score = Math.min(minAll, 22) + rng.range(0, 6);
+        let score = Math.min(minAll, 22 * this.mapScale) + rng.range(0, 6);
         if (minEnemy < 10) score -= 60;
         if (minFriend < 6) score -= 25;
         if (nearWater(x, z)) score -= 12;
@@ -222,7 +227,7 @@ export class Game {
 
   // --- Ablauf -------------------------------------------------------------
   start() {
-    this.cam.setMode('orbit', { pos: new V3(0, 4, 0) }, { dist: 78, pitch: 0.55 });
+    this.cam.setMode('orbit', { pos: new V3(0, 4, 0) }, { dist: 78 * this.mapScale, pitch: 0.55 });
     this.cam.yaw = this.rng.range(0, 6.28);
     this.cam.dist = 120;
     this.turnIdx = (this.opts.firstTeam ?? this.rng.int(0, this.teams.length - 1)) - 1;
@@ -584,7 +589,7 @@ export class Game {
       this.cam.setMode('overview', null, { keepTarget: true });
       this.cam.goal.copy(u.pos);
       this.cam.manualZoom = W.type === 'jump' ? 0.65 : 1;
-      this.hud.toast(W.type === 'jump' ? 'Tipp auf an Landepunkt im Kreis.' : 'Tipp auf das Ziel auf der Karte.');
+      this.hud.toast(W.tunnel ? 'Tipp, wo du rauskommen willst (im Kreis, ned unterm Wasser durch).' : W.type === 'jump' ? 'Tipp auf an Landepunkt im Kreis.' : 'Tipp auf das Ziel auf der Karte.');
     } else {
       this.phase = 'aim';
       this.overview = false;
@@ -592,7 +597,9 @@ export class Game {
       if (W.type === 'ballistic') u.aimPitch = clamp(Math.max(u.aimPitch, (W.minPitch || 30) * DEG), this.pitchMin(W), this.pitchMax(W));
       else u.aimPitch = clamp(u.aimPitch, this.pitchMin(W), this.pitchMax(W));
       if (W.type === 'hitscan' && Math.abs(u.aimPitch) > 0.5) u.aimPitch = 0.05;
-      if (['heal', 'place', 'melee', 'drive'].includes(W.type)) u.aimPitch = 0;
+      if (['heal', 'place', 'melee', 'drive', 'build', 'dig'].includes(W.type)) u.aimPitch = 0;
+      // Bauen, Graben, Essen: ka Zielkamera nötig, das Viech bleibt im Bild
+      if (['heal', 'build', 'dig'].includes(W.type)) u.aiming = false;
       if (this.usesTactical(W)) { this.app.input.exitLock(); this.startTactical(u, W); } else { this.stopTactical(); this.grabMouse(); }
     }
     this.hud.phase(this);
@@ -949,7 +956,11 @@ export class Game {
     if (W.type === 'jump') {
       const d = dist2D(p.x, p.z, this.unit.pos.x, this.unit.pos.z);
       if (d > W.range) { this.hud.toast('Z\'weit weg! Nur innerhalb vom Kreis.'); return; }
-      if (p.y < this.terrain.waterLevel + 0.3) { this.hud.toast('Ins Wasser springen? Na sicher ned.'); return; }
+      if (p.y < this.terrain.waterLevel + 0.3) { this.hud.toast(W.tunnel ? 'Im Wasser kummst ned raus.' : 'Ins Wasser springen? Na sicher ned.'); return; }
+      if (W.tunnel) {
+        const why = this.forts.tunnelBlocked(this.unit.pos, p);
+        if (why) { this.hud.toast(why); return; }
+      }
     }
     if (this.targetPoint && dist2D(p.x, p.z, this.targetPoint.x, this.targetPoint.z) < 2.5) {
       this.fire();
@@ -1055,6 +1066,17 @@ export class Game {
     const power = params.power !== undefined ? params.power : this.power;
     const target = params.target || this.targetPoint;
     if ((W.type === 'strike' || W.type === 'jump') && !target) return Promise.resolve();
+    // Bauen/Graben nur, wo's geht – sonst kost's nix
+    if (W.type === 'build' || W.type === 'dig') {
+      const why = W.type === 'build' ? this.forts.canBuildAt(u.pos.x, u.pos.z)
+        : u.dug ? 'Du steckst eh scho im Loch.'
+        : this.world.onDeck(u.pos.x, u.pos.z, 0.3) ? 'Durch a Brückn grabt ma ned.'
+        : this.terrain.heightAt(u.pos.x, u.pos.z) < this.terrain.waterLevel + 0.4 ? 'Im Wasser? Do wird\'s a Schlammbad.' : null;
+      if (why) {
+        this.hud.toast(why);
+        return Promise.resolve();
+      }
+    }
     if (u.ammo[id] > 0) u.ammo[id]--;
     this.charging = false;
     this.power = 0;
@@ -1063,7 +1085,7 @@ export class Game {
     this.phase = 'resolve';
     this.resolveT = 0;
     this.settleT = 0;
-    this.shot = { weapon: id, enemyDmg: 0, kills: 0, selfDmg: 0, offensive: !['heal', 'jump', 'place'].includes(W.type), blunder: !!params.blunder };
+    this.shot = { weapon: id, enemyDmg: 0, kills: 0, selfDmg: 0, offensive: !['heal', 'jump', 'place', 'build', 'dig'].includes(W.type), blunder: !!params.blunder };
     this.marker.visible = false;
     this.rangeRing.visible = false;
     this.overview = false;
@@ -1071,7 +1093,7 @@ export class Game {
     this.hud.closeWeaponMenu();
     u.weapon = id;
     this.addLog(`  fire ${id} pow=${(power || 0).toFixed(2)}`);
-    if (W.type !== 'heal' && W.type !== 'jump' && W.type !== 'place') this.say(u, 'fire', 0.4);
+    if (!['heal', 'jump', 'place', 'build', 'dig'].includes(W.type)) this.say(u, 'fire', 0.4);
     switch (W.type) {
       case 'hitscan': this.fireHitscan(u, W, id); break;
       case 'ballistic': this.fireBallistic(u, W, id, power); break;
@@ -1082,6 +1104,8 @@ export class Game {
       case 'strike': this.fireStrike(u, W, id, target); break;
       case 'jump': this.fireJump(u, W, target); break;
       case 'drive': this.fireDrive(u, W); break;
+      case 'build': this.fireBuild(u, W); break;
+      case 'dig': this.fireDig(u, W); break;
       default: break;
     }
     return new Promise((res) => { this._resolveWaiter = res; });
@@ -1128,6 +1152,7 @@ export class Game {
         this.damageUnit(hit.unit, dmg, u, null, 'shot');
       } else {
         this.fx.impactDust(hit.point, hit.prop ? undefined : this.terrain.colors.dirt);
+        if (hit.prop && hit.prop.shed) this.forts.damage(hit.prop.shed, W.dmg * 0.8, u);
       }
     }
   }
@@ -1137,8 +1162,11 @@ export class Game {
     let res = { dist: range, point: origin.clone().addScaledVector(dir, range) };
     for (const t of this.units) {
       if (!t.alive || t === ignore) continue;
+      if (t.scripted && t.scripted.tunnel && t.tunnelDepth > 1.5) continue;
       for (let part = 0; part < 2; part++) {
-        const cy = part ? 1.85 : 0.95, r = part ? 0.34 : 0.56;
+        // Eingegraben: nur mehr da Schädl schaut raus
+        if (part === 0 && t.dug) continue;
+        const cy = (part ? 1.85 : 0.95) - t.digDepth, r = part ? 0.34 : 0.56;
         const ox = origin.x - t.pos.x, oy = origin.y - (t.pos.y + cy), oz = origin.z - t.pos.z;
         const b = ox * dir.x + oy * dir.y + oz * dir.z;
         const c = ox * ox + oy * oy + oz * oz - r * r;
@@ -1163,7 +1191,7 @@ export class Game {
       const tt = (-b - Math.sqrt(disc)) / (2 * a);
       if (tt > 0 && tt < best) {
         const y = origin.y + dir.y * tt;
-        if (y > o.y0 && y < o.top) {
+        if (y > o.y0 && y < (o.rayTop !== undefined ? o.rayTop : o.top)) {
           best = tt;
           res = { dist: tt, prop: o, point: origin.clone().addScaledVector(dir, tt) };
         }
@@ -1171,6 +1199,11 @@ export class Game {
     }
     const th = this.terrain.raycast(origin, dir, best, 0.3);
     if (th && th.t < best) res = { dist: th.t, terrain: true, point: th.point };
+    // Im Verschlag schützen die Bretter den ganzen Körper, nur da Schädl schaut raus
+    if (res.unit && !res.head) {
+      const sh = this.forts.shedFor(res.unit);
+      if (sh && !(ignore && this.forts.shedFor(ignore) === sh)) res = { dist: res.dist, prop: sh.ob, point: res.point };
+    }
     return res;
   }
 
@@ -1357,7 +1390,35 @@ export class Game {
     this.busy--;
   }
 
+  fireBuild(u) {
+    this.busy++;
+    this.forts.build(u);
+    u.lunge = 0.6;
+    this.say(u, 'build', 0.9);
+    for (let i = 0; i < 4; i++) this.after(0.08 + i * 0.22, () => this.sfx('hammer', i));
+    this.after(1.1, () => { this.busy--; });
+    if (!this.demo && u.team.human) this.hud.toast('Verschlag steht! Kugeln und Splitter treffen jetzt zuerst die Bretter.', 2.6);
+  }
+
+  fireDig(u) {
+    this.busy++;
+    this.forts.dig(u);
+    this.sfx('dig');
+    this.say(u, 'dig', 0.9);
+    this.after(0.35, () => this.sfx('dig'));
+    this.after(0.9, () => { this.busy--; });
+    if (!this.demo && u.team.human) this.hud.toast('Eingegraben! Wer weggeht, steigt wieder aus.', 2.4);
+  }
+
   fireJump(u, W, target) {
+    if (W.tunnel) {
+      const d = dist2D(target.x, target.z, u.pos.x, u.pos.z);
+      u.yaw = Math.atan2(target.x - u.pos.x, target.z - u.pos.z);
+      u.startTunnel(new V3(target.x, this.terrain.heightAt(target.x, target.z), target.z), 1.3 + d / 8);
+      this.sfx('dig');
+      this.say(u, 'tunnel', 0.9);
+      return;
+    }
     const d = dist2D(target.x, target.z, u.pos.x, u.pos.z);
     const dur = clamp(1.4 + d / 20, 1.4, 3.2);
     u.yaw = Math.atan2(target.x - u.pos.x, target.z - u.pos.z);
@@ -1473,6 +1534,8 @@ export class Game {
     }
     for (const o of this.world.obstaclesNear(s.x, s.z)) {
       if (!o.solid) continue;
+      // aus dem eigenen Verschlag fahrt er raus
+      if (o.shed && s.owner && dist2D(o.x, o.z, s.owner.pos.x, s.owner.pos.z) < o.pr) continue;
       if (dist2D(o.x, o.z, s.x, s.z) < o.r + 0.85 && s.y < o.top && s.y + 1.2 > o.y0) return 'prop';
     }
     if (s.t >= W.time) return 'time';
@@ -1602,21 +1665,25 @@ export class Game {
     }
     this.world.destroyInRadius(p.x, p.y, p.z, radius * 0.75, this.fx);
     this.life.onExplosion(p, radius);
+    // Wer im Verschlag steht, wird ned so leicht rausgschleudert (Schutz gilt für diesen Knall noch)
+    const sheltered = new Set(this.units.filter((u) => u.alive && this.forts.shedFor(u)));
+    this.forts.onExplosion(p, radius, dmg, owner);
     for (const u of this.units) {
       if (!u.alive) continue;
+      if (u.scripted && u.scripted.tunnel && u.scripted.phase === 'travel') continue;
       const c = u.getCenter();
       const dist = c.distanceTo(p);
       if (dist < radius) {
         const f = 1 - dist / radius;
-        const amount = dmg * Math.pow(f, 0.65);
+        const amount = dmg * Math.pow(f, 0.65) * (sheltered.has(u) ? 0.4 : 1);
         const dir = c.clone().sub(p);
         dir.y = Math.max(dir.y, 0) + 0.9;
         dir.normalize();
-        const k = (opts.knock !== undefined ? opts.knock : dmg * 0.2) * (0.35 + 0.65 * f);
+        const k = (opts.knock !== undefined ? opts.knock : dmg * 0.2) * (0.35 + 0.65 * f) * (sheltered.has(u) ? 0.3 : 1);
         u.impulse(dir.multiplyScalar(k));
         u.lastHitBy = owner;
         u.lastHitTime = this.time;
-        this.damageUnit(u, amount, owner, null, 'explosion');
+        this.damageUnit(u, amount, owner, null, 'explosion', true);
       }
     }
     for (const m of this.mines) {
@@ -1628,8 +1695,13 @@ export class Game {
     this.lastEvent = { pos: p.clone(), t: this.time };
   }
 
-  damageUnit(u, amount, src, knock, kind) {
+  damageUnit(u, amount, src, knock, kind, shelterDone = false) {
     if (!u.alive) return;
+    // Deckung: Eingraben halbiert Explosionen, der Verschlag schluckt Feuer (Explosionen rechnet explode() selbst)
+    if (kind === 'explosion' || kind === 'fire') {
+      if (u.dug) amount *= kind === 'fire' ? 0.6 : 0.5;
+      if (kind === 'fire' && !shelterDone && this.forts.shedFor(u)) amount *= 0.5;
+    }
     amount = Math.round(amount);
     if (amount <= 0) return;
     u.hp -= amount;
@@ -1662,6 +1734,9 @@ export class Game {
     u.moving = false;
     u.deathKind = kind;
     u.deathT = 0;
+    u.dug = false;
+    u.digDepth = 0;
+    if (u.scripted && u.scripted.tunnel) { u.scripted = null; u.tunnelDepth = 0; u.model.root.visible = true; }
     u.model.weapon.visible = false;
     u.model.chute.visible = false;
     u.scripted = null;
@@ -1772,6 +1847,7 @@ export class Game {
     this.envCalm.waterLevel = this.terrain.waterLevel;
     this.world.update(dt);
     this.life.update(dt);
+    this.forts.update(dt);
     if (this.waterAnim) {
       const a = this.waterAnim;
       a.t += dt / 1.6;
@@ -1855,6 +1931,11 @@ export class Game {
     if (u.stamina <= 0) {
       if (!this.tiredSaid) { this.tiredSaid = true; this.say(u, 'tired'); }
       return false;
+    }
+    if (u.dug) {
+      // wer weggeht, steigt aus'm Loch
+      this.forts.undig(u);
+      this.sfx('dig');
     }
     const sp = WALK_SPEED * (f < 0 ? 0.55 : 1) * Math.abs(f);
     const dir = f < 0 ? -1 : 1;

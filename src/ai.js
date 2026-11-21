@@ -1,6 +1,6 @@
 // CPU-Gegner: wählt Einheit, Position, Waffe und rechnet Flugbahnen samt Wind durch.
 import * as THREE from 'three';
-import { WEAPONS, DIFFICULTY } from './config.js';
+import { WEAPONS, DIFFICULTY, STAMINA_PER_M } from './config.js';
 import { simulate } from './projectile.js';
 import { clamp, dist2D, DEG, angleDiff } from './util.js';
 import { shotOrigin } from './unit.js';
@@ -58,12 +58,14 @@ export class AI {
     this.env = { ...g.env, wind: { x: g.wind.x * k, z: g.wind.z * k }, owner: null };
     u = await this.chooseUnit(u);
     if (!this.ok(u)) return this.finish();
-    let plan = await this.plan(u, u.pos.clone(), false);
+    // eingegraben schießt ma aus'm Loch (tiefere Mündung)
+    const here = () => { const p = u.pos.clone(); p.y -= u.digDepth || 0; return p; };
+    let plan = await this.plan(u, here(), false);
     const dest = await this.chooseMove(u, plan);
     if (dest) {
       await this.walkTo(u, dest);
       if (!this.ok(u)) return this.finish();
-      plan = await this.plan(u, u.pos.clone(), false);
+      plan = await this.plan(u, here(), false);
     }
     if (!this.ok(u)) return this.finish();
     if (plan && plan.score > 1) {
@@ -331,6 +333,19 @@ export class AI {
           }
           break;
         }
+        case 'build':
+        case 'dig': {
+          if (quick) break;
+          // Stellung bauen, wenn eh nix Gscheites zum Schießen da is und Feinde in der Nähe san
+          const near = enemies[0] ? dist2D(enemies[0].pos.x, enemies[0].pos.z, from.x, from.z) : 99;
+          const atHome = dist2D(from.x, from.z, u.pos.x, u.pos.z) < 0.5;
+          if (near > 55 || (atHome && (u.dug || g.forts.shedFor(u)))) break;
+          if (W.type === 'build' && g.forts.canBuildAt(from.x, from.z)) break;
+          if (W.type === 'dig' && (g.world.onDeck(from.x, from.z, 0.3) || g.forts.shedFor({ pos: from }))) break;
+          const hurt = u.hp < u.hpMax * 0.55 ? 6 : 0;
+          consider({ score: (W.type === 'build' ? 13 : 9) + hurt, weapon: id, kind: W.type }, cost);
+          break;
+        }
         case 'drive': {
           for (const t of targets) {
             const yaw = Math.atan2(t.pos.x - from.x, t.pos.z - from.z);
@@ -375,8 +390,11 @@ export class AI {
     const T = g.terrain;
     const cur = plan ? plan.score : 0;
     if (cur >= 30 && Math.random() < 0.8) return null;
+    // in Deckung bleibt ma lieber, solang ma von dort was trifft
+    const covered = u.dug || g.forts.shedFor(u);
+    if (covered && cur > 4 && Math.random() < 0.85) return null;
     if (Math.random() > this.D.smart + 0.2) return null;
-    const range = Math.min(15, u.stamina / 6.3);
+    const range = Math.min(18, u.stamina / (STAMINA_PER_M * 1.07));
     const cands = [];
     const n = 8;
     const off = Math.random() * Math.PI * 2;
@@ -502,7 +520,7 @@ export class AI {
       await g.fire({ target: tgt });
       return;
     }
-    if (W.type === 'heal') {
+    if (W.type === 'heal' || W.type === 'build' || W.type === 'dig') {
       await g.wait(0.5);
       if (!this.ok(u)) return;
       await g.fire({});
@@ -527,7 +545,7 @@ export class AI {
       }
     }
     u.aimLandDist = plan.point ? dist2D(u.pos.x, u.pos.z, plan.point.x, plan.point.z) : undefined;
-    if (W.type !== 'melee' && W.type !== 'place' && W.type !== 'drive') u.aiming = true;
+    if (!['melee', 'place', 'drive', 'build', 'dig', 'heal'].includes(W.type)) u.aiming = true;
     await this.turnTo(u, yaw);
     if (!this.ok(u)) return;
     if (W.type === 'ballistic' || W.type === 'hitscan' || W.type === 'cone') await this.pitchTo(u, pitch);

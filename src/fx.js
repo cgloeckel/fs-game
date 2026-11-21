@@ -123,7 +123,7 @@ const COL = {
   milk: C('#fffdf5'), water: C('#d8f0ff'), water2: C('#8fc4e6'), gas1: C('#7a8a2a'), gas2: C('#5a5a20'),
   heal: C('#7dff8a'), heal2: C('#2ecc40'), spark: C('#ffd27a'), leaf: C('#4f8a33'), straw: C('#e2c46a'),
   rock: C('#8a867e'), black: C('#151515'), gold: C('#ffd54f'), red: C('#ff3b30'),
-  wood: C('#7a4d28'), chimney: C('#d9d6d0'), chimney2: C('#eeece8'),
+  wood: C('#7a4d28'), dirt: C('#5b4128'), chimney: C('#d9d6d0'), chimney2: C('#eeece8'),
 };
 
 export class FX {
@@ -162,6 +162,9 @@ export class FX {
   }
 
   r(a = 1) { return (Math.random() * 2 - 1) * a; }
+
+  colWood() { return COL.wood; }
+  colDirt() { return COL.dirt; }
 
   spawnDebris(x, y, z, color, n, speed = 7) {
     for (let k = 0; k < n; k++) {

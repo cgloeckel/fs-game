@@ -1,8 +1,15 @@
 // Spieldaten: Waffen, Dienstgrade, Fraktionen, Landschaften, Feldzug.
 export const WORLD_SIZE = 110;
+// Kartengrößen (Kantenlänge in Metern)
+export const MAP_SIZES = {
+  klein: { name: 'Klein', size: 82 },
+  mittel: { name: 'Mittel', size: 110 },
+  gross: { name: 'Groß', size: 148 },
+};
 export const GRAVITY = 18;
 export const WIND_ACC = 7;
-export const STAMINA_PER_M = 100 / 17;
+// Ausdauer pro Meter (v1.2: 25 % sparsamer, ca. 22,7 m pro Zug)
+export const STAMINA_PER_M = (100 / 17) * 0.75;
 export const WALK_SPEED = 3.4;
 
 // --- Dienstgrade (Bundesheer) -------------------------------------------
@@ -21,7 +28,7 @@ export const BRANCHES = {
   pionier: {
     name: 'Pioniere', icon: '🧨',
     titles: ['Pionier', 'Sprengmeister', 'Saboteur'],
-    desc: 'Kuhfladen-Minen, Sprengladungen, Splittergranaten und der Obstler-Flammenwerfer.',
+    desc: 'Kuhfladen-Minen, Sprengladungen, Bretterverschlag, Maulwurfgang und der Obstler-Flammenwerfer.',
   },
   sani: {
     name: 'Sanität', icon: '🩹',
@@ -31,7 +38,7 @@ export const BRANCHES = {
   jaeger: {
     name: 'Jäger', icon: '🎯',
     titles: ['Jäger', 'Scharfschütze', 'Jagdkommando'],
-    desc: 'Präzise und hinterfotzig: Jagdflinte, Scharfschützengewehr, Fallschirm, Abfangjäger.',
+    desc: 'Präzise und hinterfotzig: Jagdflinte, Scharfschützengewehr, Fallschirm, Maulwurfgang, Abfangjäger.',
   },
 };
 export const HERO_TITLES = ['Held', 'Legende'];
@@ -139,6 +146,18 @@ export const WEAPONS = {
     name: 'Fallschirmsprung', icon: '🪂', type: 'jump', range: 32, endsTurn: false,
     desc: 'Zielpunkt antippen und hinfliegen. Danach darfst no schießen.',
   },
+  verschlag: {
+    name: 'Bretterverschlag', icon: '🛖', type: 'build', hp: 90,
+    desc: 'Vier Wänd und a Dach aus alten Stadlbrettern. Schluckt Splitter und Kugeln, bis er z\'sammfallt. Rausschießen geht – reingehen kann a jeder.',
+  },
+  schaufel: {
+    name: 'Eingraben', icon: '⛏️', type: 'dig', depth: 0.85,
+    desc: 'Rein ins Loch, nur mehr Schädl und Hörner schauen raus: halber Explosionsschaden, kaum Rückstoß, Kugeln treffen nur den Kopf. Wer weggeht, steigt aus.',
+  },
+  maulwurf: {
+    name: 'Maulwurfgang', icon: '🕳️', type: 'jump', tunnel: true, range: 26, endsTurn: false,
+    desc: 'Unterirdisch zum Zielpunkt graben. Unters Wasser geht\'s ned. Danach darfst no schießen.',
+  },
   haubitze: {
     name: 'Haubitzenfeuer', icon: '🎯', type: 'strike', shells: 4, scatter: 4, radius: 4.5, dmg: 45,
     desc: 'Zielpunkt auf der Karte wählen. Vier Granaten vom Himmel.',
@@ -152,7 +171,7 @@ export const WEAPONS = {
 export const WEAPON_ORDER = [
   'kopfnuss', 'pistole', 'gewehr', 'mg', 'flinte', 'sniper', 'mistgabel',
   'granate', 'splitter', 'guelle', 'wespen', 'panzerfaust', 'moerser', 'heiligekuh', 'traktor',
-  'mine', 'tnt', 'flammen', 'jause', 'lazarett', 'sprung', 'haubitze', 'jet',
+  'mine', 'tnt', 'flammen', 'jause', 'lazarett', 'sprung', 'maulwurf', 'schaufel', 'verschlag', 'haubitze', 'jet',
 ];
 
 const LOADOUTS = {
@@ -163,9 +182,9 @@ const LOADOUTS = {
     { gewehr: 3, granate: 3, panzerfaust: 3, moerser: 3, mg: 3, haubitze: 1, traktor: 1 },
   ],
   pionier: [
-    { gewehr: 2, granate: 3, mine: 2, mistgabel: 1 },
-    { gewehr: 2, granate: 3, mine: 3, tnt: 2, splitter: 2, traktor: 1 },
-    { gewehr: 3, granate: 3, mine: 3, tnt: 3, splitter: 3, flammen: 2, traktor: 2 },
+    { gewehr: 2, granate: 3, mine: 2, mistgabel: 1, verschlag: 1, maulwurf: 1 },
+    { gewehr: 2, granate: 3, mine: 3, tnt: 2, splitter: 2, traktor: 1, verschlag: 2, maulwurf: 2 },
+    { gewehr: 3, granate: 3, mine: 3, tnt: 3, splitter: 3, flammen: 2, traktor: 2, verschlag: 3, maulwurf: 3 },
   ],
   sani: [
     { gewehr: 2, granate: 2, jause: 2, guelle: 1, mistgabel: 1 },
@@ -174,16 +193,16 @@ const LOADOUTS = {
   ],
   jaeger: [
     { flinte: 3, sniper: 1, granate: 2, mistgabel: 2 },
-    { flinte: 3, sniper: 3, granate: 2, sprung: 2, mistgabel: 2, wespen: 1 },
-    { flinte: 3, sniper: 4, granate: 2, sprung: 3, mine: 2, jet: 1, mistgabel: 3, wespen: 1 },
+    { flinte: 3, sniper: 3, granate: 2, sprung: 2, mistgabel: 2, wespen: 1, maulwurf: 1 },
+    { flinte: 3, sniper: 4, granate: 2, sprung: 3, mine: 2, jet: 1, mistgabel: 3, wespen: 1, maulwurf: 1 },
   ],
   held: {
     gewehr: 3, granate: 3, panzerfaust: 3, moerser: 2, mg: 2, sniper: 2, splitter: 2, jause: 2, sprung: 2, mine: 2,
-    mistgabel: 2, wespen: 1, traktor: 1,
+    mistgabel: 2, wespen: 1, traktor: 1, verschlag: 1, maulwurf: 1,
   },
   legende: {
     gewehr: 3, granate: 3, panzerfaust: 4, moerser: 3, mg: 2, sniper: 3, splitter: 2, jause: 2, sprung: 2, mine: 2,
-    heiligekuh: 1, haubitze: 1, jet: 1, mistgabel: 2, wespen: 2, traktor: 2,
+    heiligekuh: 1, haubitze: 1, jet: 1, mistgabel: 2, wespen: 2, traktor: 2, verschlag: 2, maulwurf: 2,
   },
 };
 
@@ -193,13 +212,14 @@ export function loadoutFor(s) {
   else if (s.tier === 4) l = LOADOUTS.held;
   else if (s.tier === 5) l = LOADOUTS.legende;
   else l = LOADOUTS[s.branch][s.tier - 1];
-  return { kopfnuss: -1, pistole: -1, ...l };
+  // Eingraben kann jedes Rindsviech – zweimal pro Gefecht
+  return { kopfnuss: -1, pistole: -1, schaufel: 2, ...l };
 }
 
 export const CRATE_WEAPONS = [
   ['granate', 2], ['panzerfaust', 1], ['moerser', 1], ['splitter', 1], ['sniper', 1], ['mine', 1],
   ['guelle', 1], ['sprung', 1], ['gewehr', 2], ['flammen', 1], ['jet', 1], ['heiligekuh', 1],
-  ['mistgabel', 2], ['wespen', 1], ['traktor', 1],
+  ['mistgabel', 2], ['wespen', 1], ['traktor', 1], ['verschlag', 1], ['maulwurf', 1], ['schaufel', 1],
 ];
 
 // --- Fraktionen -------------------------------------------------------------
@@ -213,6 +233,7 @@ export const FACTIONS = [
   { id: 'vbg', name: 'Gsiberger Käsknöpfle-Korps', short: 'Vbg', color: '#fdd835', motto: 'Schaffa, schaffa, Watschn verteila.' },
   { id: 'ktn', name: 'Kärntner Kasnudl-Kavallerie', short: 'Ktn', color: '#8e24aa', motto: 'Z\'erst gsungen, dann gschossn.' },
   { id: 'bgld', name: 'Seewinkler Weinbrigade', short: 'Bgld', color: '#8d6e63', motto: 'Flach is des Land, scharf is da Stier.' },
+  { id: 'wvtl', name: 'Waldviertler Mohnzuzler', short: 'WV', color: '#5f7d95', motto: 'A Mohnzuzl, a Ruah – und dann kracht\'s.' },
 ];
 export const factionById = (id) => FACTIONS.find((f) => f.id === id) || FACTIONS[0];
 

@@ -289,7 +289,7 @@ class App {
     this.matchMeta = { kind: 'skirmish' };
     this.game = new Game(this, {
       mode: 'skirmish', theme, seed: rng.int(1, 9999), teams, title: `Autotest ${theme}`,
-      rules: { wind: 0.5, crates: true, mines: kind === 'mines' ? 10 : 0, risingWater: kind === 'water' ? 0.5 : 0, fog: kind === 'fog', maxRounds: 25, turnTime: 60 },
+      rules: { wind: 0.5, crates: true, mines: kind === 'mines' ? 10 : 0, risingWater: kind === 'water' ? 0.5 : 0, fog: kind === 'fog', maxRounds: 25, turnTime: 60, mapSize: this.params.get('size') || 'mittel' },
     });
     this.applyCamera(this.game);
     this.game.start();

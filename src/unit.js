@@ -52,6 +52,9 @@ export class Unit {
     this.lunge = 0;
     this.cheer = 0;
     this.burnT = 0;
+    this.dug = false;        // eingegraben
+    this.digDepth = 0;       // aktuelle Tiefe (animiert)
+    this.tunnelDepth = 0;    // beim Maulwurfgang
     const seed = Math.floor(hash2(soldier.id * 13 + 7, soldier.name.length) * 1e9);
     this.model = buildCattle({ sex: soldier.sex, breed: soldier.breed, teamColor: team.color, tier: soldier.tier, seed });
     game.scene.add(this.model.root);
@@ -76,8 +79,8 @@ export class Unit {
     return WEAPON_ORDER.filter((id) => this.ammo[id] !== undefined);
   }
 
-  getCenter() { return this.center.set(this.pos.x, this.pos.y + 0.95, this.pos.z); }
-  getHead() { return this.headPos.set(this.pos.x, this.pos.y + 2.05, this.pos.z); }
+  getCenter() { return this.center.set(this.pos.x, this.pos.y + 0.95 - this.digDepth, this.pos.z); }
+  getHead() { return this.headPos.set(this.pos.x, this.pos.y + 2.05 - this.digDepth, this.pos.z); }
 
   forward(out = new THREE.Vector3()) { return out.set(Math.sin(this.yaw), 0, Math.cos(this.yaw)); }
 
@@ -87,7 +90,9 @@ export class Unit {
   }
 
   muzzle(out = new THREE.Vector3(), yaw = this.yaw, pitch = this.aimPitch, W = WEAPONS[this.weapon]) {
-    return shotOrigin(this.pos, yaw, pitch, W, out);
+    shotOrigin(this.pos, yaw, pitch, W, out);
+    out.y -= this.digDepth;
+    return out;
   }
 
   setHeld(id) {
@@ -102,6 +107,12 @@ export class Unit {
   }
 
   impulse(v) {
+    if (this.dug) {
+      // im Loch steckt ma fest: kleine Stöße verpuffen, große reißen eam raus
+      v = v.clone().multiplyScalar(0.25);
+      if (v.length() < 2.2) return;
+      this.game.forts.undig(this);
+    }
     this.vel.add(v);
     if (this.vel.y < 1.5) this.vel.y = 1.5;
     this.onGround = false;
@@ -110,6 +121,7 @@ export class Unit {
 
   jump() {
     if (!this.onGround || this.scripted || this.stamina < 5) return false;
+    if (this.dug) this.game.forts.undig(this);
     const f = this.forward();
     this.vel.set(f.x * 3.6, 6.4, f.z * 3.6);
     this.onGround = false;
@@ -123,13 +135,64 @@ export class Unit {
     this.model.chute.visible = false;
   }
 
+  startTunnel(to, dur) {
+    this.scripted = { tunnel: true, from: this.pos.clone(), to: to.clone(), t: 0, dur, phase: 'sink' };
+    this.onGround = false;
+    if (this.dug) this.game.forts.undig(this, true);
+  }
+
+  updateTunnel(dt) {
+    const T = this.game.terrain;
+    const sc = this.scripted;
+    sc.t += dt;
+    const SINK = 0.6, DEEP = 2.6;
+    if (sc.t < SINK) {
+      sc.phase = 'sink';
+      this.tunnelDepth = (sc.t / SINK) * DEEP;
+      this.model.root.rotation.z = Math.sin(sc.t * 40) * 0.08;
+      if (Math.random() < 0.5) this.game.fx.impactDust(this.pos.clone(), T.colors.dirt);
+    } else if (sc.t < sc.dur - SINK) {
+      sc.phase = 'travel';
+      const k = (sc.t - SINK) / Math.max(0.01, sc.dur - 2 * SINK);
+      this.pos.x = sc.from.x + (sc.to.x - sc.from.x) * k;
+      this.pos.z = sc.from.z + (sc.to.z - sc.from.z) * k;
+      this.pos.y = Math.max(T.heightAt(this.pos.x, this.pos.z), T.waterLevel);
+      this.tunnelDepth = DEEP;
+    } else {
+      if (sc.phase !== 'rise') {
+        sc.phase = 'rise';
+        this.pos.set(sc.to.x, T.heightAt(sc.to.x, sc.to.z), sc.to.z);
+        this.game.fx.spawnDebris(this.pos.x, this.pos.y + 0.2, this.pos.z, this.game.fx.colDirt(), 12, 5);
+        this.game.sfx('thump');
+      }
+      const k = clamp((sc.dur - sc.t) / SINK, 0, 1);
+      this.tunnelDepth = k * DEEP;
+      this.model.root.rotation.z = Math.sin(sc.t * 40) * 0.08 * k;
+      if (sc.t >= sc.dur) {
+        this.scripted = null;
+        this.tunnelDepth = 0;
+        this.model.root.rotation.z = 0;
+        this.pos.y = T.heightAt(this.pos.x, this.pos.z);
+        this.onGround = true;
+        this.vel.set(0, 0, 0);
+        this.game.fx.impactDust(this.pos.clone(), T.colors.dirt);
+        this.game.forts.dropHill(this.pos.x + Math.sin(this.yaw + Math.PI) * 0.9, this.pos.z + Math.cos(this.yaw + Math.PI) * 0.9);
+      }
+    }
+    this.model.root.visible = this.tunnelDepth < DEEP - 0.05;
+  }
+
   update(dt) {
     const T = this.game.terrain;
     if (!this.alive) {
       this.updateDead(dt);
       return;
     }
-    if (this.scripted) {
+    this.digDepth = damp(this.digDepth, this.dug ? WEAPONS.schaufel.depth : 0, this.dug ? 5 : 9, dt);
+    if (this.digDepth < 0.004) this.digDepth = 0;
+    if (this.scripted && this.scripted.tunnel) {
+      this.updateTunnel(dt);
+    } else if (this.scripted) {
       const sc = this.scripted;
       sc.t += dt;
       const k = Math.min(1, sc.t / sc.dur);
@@ -299,6 +362,7 @@ export class Unit {
     const sq = Math.sin(this.squash * Math.PI) * 0.18;
     m.root.scale.set(1 + sq * 0.5, 1 - sq, 1 + sq * 0.5);
     m.root.position.copy(this.pos);
+    m.root.position.y -= this.digDepth + this.tunnelDepth;
     m.root.rotation.y = this.yaw;
     if (this.scripted && this.model.chute.visible) m.chute.rotation.y += dt * 0.5;
   }

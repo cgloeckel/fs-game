@@ -5,9 +5,9 @@ import { WORLD_SIZE } from './config.js';
 import { clamp, smoothstep } from './util.js';
 
 export class Terrain {
-  constructor(theme, seed, res = 128, lowQuality = false) {
+  constructor(theme, seed, res = 128, lowQuality = false, size = WORLD_SIZE) {
     this.theme = theme;
-    this.size = WORLD_SIZE;
+    this.size = size;
     this.half = this.size / 2;
     this.res = res;
     this.cell = this.size / (res - 1);
@@ -25,7 +25,10 @@ export class Terrain {
     this.generate(seed);
     const rng = new RNG(seed * 13 + 5);
     this.forestNoise = makeNoise2D(seed + 91);
-    if (theme.lake) this.carveLake(rng, theme.lake);
+    if (theme.lake) {
+      const k = Math.pow(size / WORLD_SIZE, 0.7);
+      this.carveLake(rng, { ...theme.lake, r: theme.lake.r * k });
+    }
     this.planPath(rng);
     this.buildMesh(lowQuality);
   }

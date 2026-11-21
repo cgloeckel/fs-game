@@ -128,6 +128,21 @@ class AudioEngine {
     this.noise({ dur: 0.2, freq: 900, freqEnd: 100, gain: 0.4 });
   }
 
+  // Hammerschlag auf Holz
+  hammer(i = 0) {
+    if (!this.ok) return;
+    const f = 520 + (i % 2) * 90;
+    this.tone({ freq: f, freqEnd: f * 0.6, dur: 0.07, type: 'triangle', gain: 0.28 });
+    this.noise({ dur: 0.06, freq: 2400, freqEnd: 900, type: 'bandpass', q: 1.2, gain: 0.25 });
+  }
+
+  // Schaufel in die Erd
+  dig() {
+    if (!this.ok) return;
+    this.noise({ dur: 0.28, freq: 700, freqEnd: 220, type: 'lowpass', q: 0.8, gain: 0.32, attack: 0.02 });
+    this.noise({ dur: 0.12, freq: 3200, freqEnd: 1600, type: 'bandpass', q: 2, gain: 0.08, delay: 0.03 });
+  }
+
   throwSnd() {
     if (!this.ok) return;
     this.noise({ dur: 0.25, freq: 800, freqEnd: 1800, type: 'bandpass', q: 2, gain: 0.25, attack: 0.03 });

@@ -30,7 +30,7 @@ export class CameraRig {
     this.opts = opts;
     if (mode === 'overview') {
       this.goalPitch = 1.05;
-      this.goalDist = 105;
+      this.goalDist = 105 * (this.worldScale || 1);
       if (!opts.keepTarget) this.goal.set(0, 0, 0);
     }
   }
@@ -47,8 +47,9 @@ export class CameraRig {
     const fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
     this.goal.x += (-dx * fz - dy * fx) * s;
     this.goal.z += (dx * fx - dy * fz) * s;
-    this.goal.x = clamp(this.goal.x, -70, 70);
-    this.goal.z = clamp(this.goal.z, -70, 70);
+    const lim = 70 * (this.worldScale || 1);
+    this.goal.x = clamp(this.goal.x, -lim, lim);
+    this.goal.z = clamp(this.goal.z, -lim, lim);
     this.userTime = 0;
   }
 
@@ -147,7 +148,7 @@ export class CameraRig {
         break;
       }
       case 'overview': {
-        this.goalDist = 105 * this.manualZoom;
+        this.goalDist = 105 * (this.worldScale || 1) * this.manualZoom;
         this.goalFov = 55;
         break;
       }

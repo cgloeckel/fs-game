@@ -54,7 +54,7 @@ export class Life {
     this.birds = [];
     this.whistleT = 0;
     const L = game.theme.life || {};
-    const n = (k) => Math.round((L[k] || 0) * this.mul);
+    const n = (k) => Math.round((L[k] || 0) * this.mul * (this.world.area || 1));
     const G0 = geos();
     for (let i = 0; i < n('hasen'); i++) this.spawnHare(G0);
     for (let i = 0; i < n('murmel'); i++) this.spawnMarmot(G0);

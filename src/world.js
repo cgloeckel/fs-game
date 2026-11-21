@@ -4,6 +4,7 @@ import { Terrain } from './terrain.js';
 import { RNG, makeNoise2D } from './rng.js';
 import { propGeometry, bridgeGeometry, materials, merge, part, col } from './models.js';
 import { DEG, clamp, dist2D } from './util.js';
+import { WORLD_SIZE } from './config.js';
 
 export const GRID = 6;
 const EMPTY = [];
@@ -30,7 +31,9 @@ export class World {
     this.decoKinds = new Set(['corn', 'vine', 'grass', 'flower', 'pumpkin', 'reed', 'sonnenblume', 'zaun', 'seerose', 'seerosenbluete',
       'blume_weiss', 'blume_gelb', 'blume_rot', 'blume_lila', 'blume_blau']);
     this.floatKinds = new Set(['seerose', 'seerosenbluete']);
-    this.terrain = new Terrain(theme, seed, this.Q.res, quality === 'low');
+    this.size = opts.size || WORLD_SIZE;
+    this.area = (this.size / WORLD_SIZE) ** 2;
+    this.terrain = new Terrain(theme, seed, Math.round(this.Q.res * this.size / WORLD_SIZE), quality === 'low', this.size);
     scene.add(this.terrain.mesh);
     this.setupLights();
     this.setupSky(opts.fog);
@@ -61,6 +64,21 @@ export class World {
     this.obstacleGrid = grid;
   }
 
+  // nachträglich gebautes Hindernis (z. B. Bretterverschlag) ins Raster eintragen
+  addObstacle(o) {
+    this.obstacles.push(o);
+    const r = Math.max(o.r, o.pr) + 0.6;
+    const x0 = Math.floor((o.x - r) / GRID), x1 = Math.floor((o.x + r) / GRID);
+    const z0 = Math.floor((o.z - r) / GRID), z1 = Math.floor((o.z + r) / GRID);
+    for (let ix = x0; ix <= x1; ix++) {
+      for (let iz = z0; iz <= z1; iz++) {
+        const k = gridKey(ix, iz);
+        if (!this.obstacleGrid.has(k)) this.obstacleGrid.set(k, []);
+        this.obstacleGrid.get(k).push(o);
+      }
+    }
+  }
+
   obstaclesNear(x, z) {
     return this.obstacleGrid.get(gridKey(Math.floor(x / GRID), Math.floor(z / GRID))) || EMPTY;
   }
@@ -77,7 +95,7 @@ export class World {
     if (this.Q.shadow) {
       sun.castShadow = true;
       sun.shadow.mapSize.set(this.Q.shadow, this.Q.shadow);
-      const s = 64;
+      const s = 64 * (this.size / WORLD_SIZE);
       Object.assign(sun.shadow.camera, { left: -s, right: s, top: s, bottom: -s, near: 20, far: 320 });
       sun.shadow.bias = -0.0006;
       sun.shadow.normalBias = 0.04;
@@ -359,7 +377,9 @@ export class World {
   placeProps(opts) {
     const P = this.theme.props;
     const rng = this.rng;
-    const sc = this.Q.propScale, gs = this.Q.grassScale;
+    // Mengen wachsen mit der Inselfläche, Dichten bleiben gleich
+    const A = this.area;
+    const sc = this.Q.propScale * A, gs = this.Q.grassScale * A, gd = this.Q.grassScale;
     const T = this.terrain;
     const D = this.theme.deco || {};
     const avoid = (opts.avoid || []).concat(T.decks.flatMap((dk) => [{ x: dk.ax, z: dk.az, r: 3.5 }, { x: dk.bx, z: dk.bz, r: 3.5 }]));
@@ -367,7 +387,7 @@ export class World {
     const meadow = (x, z) => 1 - T.forestAt(x, z) * 0.9;
 
     // Gebäude – gern am Feldweg, Tor zum Weg hin
-    for (let i = 0; i < (P.stadl || 0); i++) {
+    for (let i = 0; i < (P.stadl ? Math.max(1, Math.round(P.stadl * A)) : 0); i++) {
       let s = this.findSpot(rng, { maxSlope: 0.25, minDist: 6, avoid, minH: 1.2, pathGap: 4.5, gen: (r) => this.besidePath(r, 6, 9), tries: 30 });
       let rot;
       if (s) {
@@ -392,7 +412,7 @@ export class World {
       }
     }
     if (P.marterl || opts.maibaum) {
-      for (let i = 0; i < (P.marterl || 0); i++) {
+      for (let i = 0; i < (P.marterl ? Math.max(1, Math.round(P.marterl * A)) : 0); i++) {
         let s = this.findSpot(rng, { maxSlope: 0.4, minDist: 3, avoid, pathGap: 2, gen: (r) => this.besidePath(r, 2.4, 3.2), tries: 30 });
         let rot = rng.range(0, Math.PI * 2);
         if (s) {
@@ -480,7 +500,7 @@ export class World {
     // Weinfasserl beim Stadl oder am Weg
     if (D.faesser) {
       const list = [];
-      for (let g = 0; g < D.faesser; g++) {
+      for (let g = 0; g < Math.max(1, Math.round(D.faesser * A)); g++) {
         const s = this.findSpot(rng, { maxSlope: 0.3, minDist: 1.5, avoid, pathGap: 2, gen: (r) => this.besidePath(r, 2.6, 4), tries: 40 });
         if (!s) continue;
         const k = rng.int(2, 4), a = rng.range(0, 6.28);
@@ -532,7 +552,8 @@ export class World {
       // Vogelscheuchen mitten im Kukuruz
       if (D.vogelscheuche && l.length) {
         const vs = [];
-        for (let i = 0; i < D.vogelscheuche * 4 && vs.length < D.vogelscheuche; i++) {
+        const nV = Math.max(1, Math.round(D.vogelscheuche * A));
+        for (let i = 0; i < nV * 4 && vs.length < nV; i++) {
           const c = l[rng.int(0, l.length - 1)];
           if (vs.some((v) => dist2D(v.x, v.z, c.x, c.z) < 12)) continue;
           if (avoid.some((v) => dist2D(c.x, c.z, v.x, v.z) < v.r) || this.obstacles.some((o) => dist2D(c.x, c.z, o.x, o.z) < o.r + 1)) continue;
@@ -556,7 +577,7 @@ export class World {
             if (T.baseHeightAt(x, z) > T.waterLevel - 0.25) { shore = { x, z }; break; }
           }
           if (!shore || this.onDeck(shore.x, shore.z, 3)) continue;
-          const k = Math.round(rng.range(6, 12) * gs) + 2;
+          const k = Math.round(rng.range(6, 12) * gd) + 2;
           for (let i = 0; i < k; i++) {
             const x = shore.x + rng.range(-1.6, 1.6), z = shore.z + rng.range(-1.6, 1.6);
             const h = T.baseHeightAt(x, z);
@@ -578,13 +599,13 @@ export class World {
       if (h < T.waterLevel + 0.55 || T.slopeAt(x, z) > 0.8 || this.onDeck(x, z, 0.5) || T.distToPath(x, z) < 1.2) return;
       (blumen[kind] ||= []).push({ x, y: h - 0.04, z, s, rot: rng.range(0, 6.28), alive: true });
     };
-    for (let f = 0; f < (this.theme.flowerPatches || 0); f++) {
+    for (let f = 0; f < Math.round((this.theme.flowerPatches || 0) * A); f++) {
       const s = this.findSpot(rng, { maxSlope: 0.5, minDist: 0, avoid: [], pathGap: 1.6, weight: (x, z) => 1 - T.forestAt(x, z), minH: 0.8, tries: 30 });
       if (!s) continue;
       this.flowerSpots.push({ x: s.x, z: s.z });
       const k1 = palette[rng.int(0, palette.length - 1)], k2 = palette[rng.int(0, palette.length - 1)];
       const R = rng.range(2.2, 3.6);
-      const n = Math.round(rng.range(40, 75) * gs) + 6;
+      const n = Math.round(rng.range(40, 75) * gd) + 6;
       const ea = rng.range(0, Math.PI), ec = Math.cos(ea), es = Math.sin(ea);
       for (let i = 0; i < n; i++) {
         const a = rng.range(0, Math.PI * 2), r = Math.pow(rng.next(), 0.6) * R;
@@ -838,7 +859,7 @@ export class World {
   collideCircle(pos, r) {
     let hit = false;
     for (const o of this.obstaclesNear(pos.x, pos.z)) {
-      if (!o.solid) continue;
+      if (!o.solid || o.walkThrough) continue;
       if (pos.y > o.top || pos.y + 1.6 < o.y0) continue;
       const dx = pos.x - o.x, dz = pos.z - o.z;
       const d = Math.sqrt(dx * dx + dz * dz);
